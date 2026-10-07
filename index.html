@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebStrike – Tarayıcıda Taktik FPS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <canvas id="gl"></canvas>
+
+  <!-- ============ HUD ============ -->
+  <div id="hud" class="hidden">
+    <div id="hud-top">
+      <div class="top-side ct">
+        <div class="avatars" id="ct-avatars"></div>
+        <div class="score" id="ct-score">0</div>
+      </div>
+      <div class="top-center">
+        <div id="round-timer">1:55</div>
+        <div id="round-sub"></div>
+      </div>
+      <div class="top-side t">
+        <div class="score" id="t-score">0</div>
+        <div class="avatars" id="t-avatars"></div>
+      </div>
+    </div>
+
+    <div id="radar-wrap">
+      <canvas id="radar" width="220" height="220"></canvas>
+      <div id="radar-zone"></div>
+      <div id="money-row"><span id="buy-icon" title="Satın alma bölgesi">🛒</span><span id="money">$800</span></div>
+      <div id="money-delta"></div>
+    </div>
+
+    <div id="killfeed"></div>
+    <div id="chat"></div>
+
+    <div id="hp-panel">
+      <div class="stat"><span class="ico">✚</span><span id="hp-val">100</span><div class="bar"><div id="hp-bar"></div></div></div>
+      <div class="stat"><span class="ico" id="armor-ico">⛨</span><span id="armor-val">0</span><div class="bar"><div id="armor-bar"></div></div></div>
+      <div id="kit-ico" class="hidden" title="İmha kiti">✂</div>
+    </div>
+
+    <div id="ammo-panel">
+      <div id="weapon-name">USP-S</div>
+      <div><span id="ammo-clip">12</span><span id="ammo-sep"> / </span><span id="ammo-reserve">24</span></div>
+      <div id="fire-mode"></div>
+    </div>
+    <div id="inventory"></div>
+    <div id="c4-carry" class="hidden">C4</div>
+
+    <canvas id="crosshair" width="96" height="96"></canvas>
+    <div id="center-msg"></div>
+    <div id="hint-msg"></div>
+    <div id="progress-wrap" class="hidden"><div id="progress-label"></div><div id="progress-bar"><div id="progress-fill"></div></div></div>
+    <div id="round-banner" class="hidden"><div id="banner-title"></div><div id="banner-sub"></div></div>
+    <div id="dmg-indicators"></div>
+    <div id="spectate-info" class="hidden"></div>
+    <div id="death-panel" class="hidden"></div>
+    <div id="bomb-status" class="hidden"></div>
+    <div id="fps"></div>
+  </div>
+
+  <div id="scope-overlay" class="hidden"><div class="scope-lens"></div><div class="scope-h"></div><div class="scope-v"></div></div>
+  <div id="smoke-overlay"></div>
+  <div id="flash-overlay"></div>
+  <div id="hurt-overlay"></div>
+
+  <!-- ============ SCOREBOARD ============ -->
+  <div id="scoreboard" class="hidden"></div>
+
+  <!-- ============ BUY MENU ============ -->
+  <div id="buymenu" class="hidden">
+    <div class="bm-head">
+      <div class="bm-title">SATIN AL</div>
+      <div class="bm-money" id="bm-money">$800</div>
+      <div class="bm-time" id="bm-time"></div>
+      <div class="bm-close">[B] Kapat</div>
+    </div>
+    <div class="bm-grid" id="bm-grid"></div>
+    <div class="bm-foot">Sütun tuşu (1-5) + ürün tuşu ile hızlı satın al · Sağ tık: bu tur aldığın eşyayı iade et</div>
+  </div>
+
+  <!-- ============ TEAM SELECT ============ -->
+  <div id="teamselect" class="hidden">
+    <h2>TAKIM SEÇ</h2>
+    <div class="ts-row">
+      <div class="ts-card ct" data-team="CT"><div class="ts-emblem">CT</div><div class="ts-name">Terörle Mücadele</div><div class="ts-desc">Bölgeleri savun, bombayı imha et.</div></div>
+      <div class="ts-card auto" data-team="AUTO"><div class="ts-emblem">?</div><div class="ts-name">Otomatik</div><div class="ts-desc">Rastgele takım.</div></div>
+      <div class="ts-card t" data-team="T"><div class="ts-emblem">T</div><div class="ts-name">Teröristler</div><div class="ts-desc">Bombayı kur ve patlat.</div></div>
+    </div>
+  </div>
+
+  <!-- ============ PAUSE MENU ============ -->
+  <div id="pause-menu" class="hidden">
+    <div class="pm-box">
+      <h2>DURAKLATILDI</h2>
+      <button id="pm-resume" class="btn primary">Devam Et</button>
+      <button id="pm-settings" class="btn">Ayarlar</button>
+      <button id="pm-quit" class="btn danger">Maçtan Çık</button>
+    </div>
+  </div>
+
+  <div id="click-to-play" class="hidden">Oynamak için tıkla</div>
+
+  <!-- ============ MAIN MENU ============ -->
+  <div id="main-menu">
+    <div class="mm-topbar">
+      <div class="mm-logo">WEB<span>STRIKE</span></div>
+      <nav class="mm-nav">
+        <button class="nav-btn active" data-tab="play">OYNA</button>
+        <button class="nav-btn" data-tab="settings">AYARLAR</button>
+        <button class="nav-btn" data-tab="howto">NASIL OYNANIR</button>
+      </nav>
+      <div class="mm-profile"><div class="mm-avatar"></div><input id="player-name" maxlength="16" spellcheck="false"></div>
+    </div>
+
+    <section class="mm-tab" id="tab-play">
+      <div class="play-left">
+        <h3>OYUN MODU</h3>
+        <div class="mode-list" id="mode-list">
+          <div class="mode-card active" data-mode="competitive"><div class="mode-title">Rekabetçi</div><div class="mode-desc">5v5 · MR12 (ilk 13) · Tam ekonomi · Uzatma</div></div>
+          <div class="mode-card" data-mode="casual"><div class="mode-title">Sıradan</div><div class="mode-desc">5v5 · İlk 8 · Bedava zırh & kit · Dost ateşi kapalı</div></div>
+          <div class="mode-card" data-mode="dm"><div class="mode-title">Ölüm Maçı</div><div class="mode-desc">Herkes herkese · 10 dk · Anında yeniden doğma · Bedava silah</div></div>
+          <div class="mode-card" data-mode="practice"><div class="mode-title">Antrenman</div><div class="mode-desc">Bot yok · Sınırsız para · Bomba yolu çizgisi · Haritayı öğren</div></div>
+        </div>
+        <h3>BOT ZORLUĞU</h3>
+        <div class="seg" id="diff-seg">
+          <button data-v="easy">Kolay</button><button data-v="normal">Normal</button><button data-v="hard">Zor</button><button data-v="expert">Uzman</button>
+        </div>
+      </div>
+      <div class="play-right">
+        <h3>HARİTA</h3>
+        <div class="map-card active">
+          <canvas id="map-thumb" width="300" height="320"></canvas>
+          <div class="map-info"><div class="map-name">de_kasaba</div><div class="map-desc">Çöl kasabası · Bomba imha · A uzun, A kısa, orta, B tünelleri</div></div>
+        </div>
+      </div>
+      <button id="go-btn" class="go-btn">BAŞLA</button>
+    </section>
+
+    <section class="mm-tab hidden" id="tab-settings">
+      <div id="settings-root"></div>
+    </section>
+
+    <section class="mm-tab hidden" id="tab-howto">
+      <div class="howto">
+        <div class="howto-col">
+          <h3>KONTROLLER</h3>
+          <table>
+            <tr><td>W A S D</td><td>Hareket</td></tr>
+            <tr><td>Fare</td><td>Nişan / Ateş (Sol) / Alternatif (Sağ: dürbün, susturucu, seri atış)</td></tr>
+            <tr><td>Shift</td><td>Yürü (ses çıkarmaz)</td></tr>
+            <tr><td>Ctrl / C</td><td>Eğil</td></tr>
+            <tr><td>Boşluk</td><td>Zıpla (havada Ctrl = çömelerek zıplama)</td></tr>
+            <tr><td>R</td><td>Şarjör değiştir</td></tr>
+            <tr><td>1 2 3 4 5</td><td>Ana / Tabanca / Bıçak / Bomba (tekrar bas: sıradaki) / C4</td></tr>
+            <tr><td>Q</td><td>Son silaha geç</td></tr>
+            <tr><td>Tekerlek</td><td>Silah değiştir</td></tr>
+            <tr><td>G</td><td>Silahı / bombayı yere at</td></tr>
+            <tr><td>E</td><td>Bomba imha et / silah al</td></tr>
+            <tr><td>F</td><td>Silahı incele</td></tr>
+            <tr><td>B</td><td>Satın alma menüsü</td></tr>
+            <tr><td>Tab</td><td>Skor tablosu</td></tr>
+            <tr><td>Esc</td><td>Menü</td></tr>
+          </table>
+        </div>
+        <div class="howto-col">
+          <h3>MEKANİKLER</h3>
+          <ul>
+            <li><b>Ekonomi:</b> Tur galibiyeti $3250 (bomba/imha $3500), kayıp bonusu $1400→$3400, öldürme ödülü silaha göre ($100–$1500).</li>
+            <li><b>Bomba:</b> Kurma 3.2 sn, patlama 40 sn, imha 10 sn (kit ile 5 sn).</li>
+            <li><b>Sekme deseni:</b> Her silahın sabit bir sprey deseni var. Fareyi ters yöne çekerek kontrol et.</li>
+            <li><b>İsabet:</b> Hareket ederken, zıplarken ve seri atarken isabet düşer. Durup (karşı-strafe) ateş et.</li>
+            <li><b>Hasar:</b> Kafa ×4, mide ×1.25, göğüs/kol ×1, bacak ×0.75. Zırh ve kask hasarı azaltır.</li>
+            <li><b>Duvar delme:</b> Ahşap kasalar ve ince malzemelerden mermi geçer.</li>
+            <li><b>Bombalar:</b> Sis (molotofu söndürür, HE ile açılır), flaş (bakış açısına göre kör eder), HE, molotof/yangın, dekoy.</li>
+            <li><b>Ses:</b> Koşarken ayak sesi çıkar; Shift ile sessiz yürü.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="loading" class="hidden"><div class="ld-title">de_kasaba</div><div class="ld-sub" id="loading-text">Yükleniyor...</div><div class="ld-bar"><div id="ld-fill"></div></div></div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
