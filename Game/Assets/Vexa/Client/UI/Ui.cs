@@ -116,6 +116,8 @@ namespace Vexa.Client.UI
             int i = 0;
             foreach (var c in e.Children())
             {
+                // like CSS gap: absolutely positioned and hidden children take no part in it
+                if (c.resolvedStyle.position == Position.Absolute || c.resolvedStyle.display == DisplayStyle.None) continue;
                 if (!c.ClassListContains(CustomMargin))
                 {
                     if (row) c.style.marginLeft = i == 0 ? 0 : gap;

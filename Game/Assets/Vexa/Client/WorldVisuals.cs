@@ -31,7 +31,7 @@ namespace Vexa.Client
 
         public static Material Unlit(Color c)
         {
-            var sh = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color");
+            var sh = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color") ?? Shader.Find("Sprites/Default");
             return new Material(sh) { color = c };
         }
 

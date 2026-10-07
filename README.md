@@ -50,8 +50,9 @@ Modlar: `competitive`, `casual`, `deathmatch`, `practice`. `--difficulty` 0 (kol
 2. Unity Hub → **Add project from disk** → `Game` klasörünü seç. İlk açılışta paketler indirilir; farklı bir 6000.0 sürümün varsa yükseltmeyi kabul et.
 3. **Edit → Project Settings → Player → Active Input Handling = Both**.
 4. Proje URP grafik ayarı istemezse: *Assets → Create → Rendering → URP Asset (with Universal Renderer)*. Sonra *Project Settings → Graphics* ve *Quality* bölümlerinde bu asset'i seç.
-5. Herhangi bir sahnede (boş sahne de olur) **Play**'e bas. VEXA ana menüsü kendiliğinden açılır.
-6. **OYNA** sekmesinde modu, haritayı, tarafı ve bot zorluğunu seç, ardından **MAÇI BAŞLAT**'a bas. Aynı sayfadaki **SUNUCUYA KATIL** bölümü 2. adımdaki sunucuya bağlanır.
+5. Oyuncu derlemesi (build) alırken *Project Settings → Graphics → Always Included Shaders* listesine **Universal Render Pipeline/Lit** ve **Universal Render Pipeline/Unlit**'i ekle; malzemeler koddan oluşturulduğu için Unity bunları kendiliğinden dahil etmez.
+6. Herhangi bir sahnede (boş sahne de olur) **Play**'e bas. VEXA ana menüsü kendiliğinden açılır.
+7. **OYNA** sekmesinde modu, haritayı, tarafı ve bot zorluğunu seç, ardından **MAÇI BAŞLAT**'a bas. Aynı sayfadaki **SUNUCUYA KATIL** bölümü 2. adımdaki sunucuya bağlanır.
 
 **Kontroller (PC):**
 

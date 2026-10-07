@@ -72,6 +72,15 @@ namespace Vexa.Client.UI
             Bar(4, -T / 2, -T / 2, T, T, s.Dot);
         }
 
+        private bool _barsVisible = true;
+
+        public void SetBarsVisible(bool on)
+        {
+            if (on == _barsVisible) return;
+            _barsVisible = on;
+            foreach (var b in _bars) b.style.visibility = on ? Visibility.Visible : Visibility.Hidden;
+        }
+
         public void SetHit(float alpha, bool kill)
         {
             var c = kill ? Theme.Danger : Color.white;

@@ -37,8 +37,14 @@ namespace Vexa.Client.UI
             Select(0);
         }
 
+        private int _current;
+
+        /// <summary>Rebuild the open tab so it shows values changed elsewhere (the other settings screen).</summary>
+        public void Refresh() => Select(_current);
+
         public void Select(int i)
         {
+            _current = i;
             for (int k = 0; k < _tabs.Count; k++) _tabs[k].Selected = k == i;
             _content.Clear();
             _xhSliders.Clear(); _xhToggles.Clear(); _swatches.Clear(); _preview = null; _code = null;

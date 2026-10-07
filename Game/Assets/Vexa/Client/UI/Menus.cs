@@ -55,6 +55,7 @@ namespace Vexa.Client.UI
         private readonly VisualElement _home, _play, _settingsPage, _leftShade;
         private readonly PlayPage _playPage;
         private readonly Label _error;
+        private readonly SettingsView _settingsView = new SettingsView();
 
         public MainMenuView()
         {
@@ -68,7 +69,7 @@ namespace Vexa.Client.UI
             _play = U.Box().Abs(0, 72, 0, 0).Bg(Theme.Ink);
             _play.Add(_playPage);
             _settingsPage = U.Box().Abs(0, 72, 0, 0).Bg(Theme.Ink).Pad(40, 64);
-            _settingsPage.Add(new SettingsView());
+            _settingsPage.Add(_settingsView);
             hierarchy.Add(_home); hierarchy.Add(_play); hierarchy.Add(_settingsPage);
 
             _top = new TopBar(new[] { "ANA SAYFA", "OYNA", "AYARLAR" }, ShowPage);
@@ -88,6 +89,7 @@ namespace Vexa.Client.UI
             _top.Select(page);
             _home.Show(page == 0); _leftShade.Show(page == 0);
             _play.Show(page == 1);
+            if (page == 2 && !_settingsPage.Visible()) _settingsView.Refresh();
             _settingsPage.Show(page == 2);
             if (page == 1) _playPage.Refresh();
         }
@@ -283,6 +285,10 @@ namespace Vexa.Client.UI
         void PickMap(int i)
         {
             _map = i;
+            // no bomb sites on the training range: fall back to deathmatch there
+            var m = Modes[_mode].mode;
+            if (Maps[i].file == "training" && (m == GameMode.Competitive || m == GameMode.Casual)) _mode = 2;
+            VexaSettings.LastMode = _mode;
             VexaSettings.LastMap = i; VexaSettings.Save();
             Refresh();
         }
@@ -416,6 +422,7 @@ namespace Vexa.Client.UI
     public sealed class PauseView : VisualElement
     {
         private readonly VisualElement _main, _settings, _teamRow;
+        private readonly SettingsView _settingsView = new SettingsView();
         private readonly Label _info;
         public event Action Resume, Leave;
         public Action<Team> PickTeam;
@@ -445,7 +452,7 @@ namespace Vexa.Client.UI
             _settings = U.Col(20).Abs(64, 64, 64, 64);
             var head = U.Row(16).Align(Align.Center);
             head.Kids(new UButton("GERİ", ButtonStyle.Ghost, () => ShowSettings(false)), U.Head("AYARLAR", 48, null, Fonts.Display, 2));
-            _settings.Kids(head, new SettingsView());
+            _settings.Kids(head, _settingsView);
             hierarchy.Add(_settings);
             ShowSettings(false);
         }
@@ -458,7 +465,11 @@ namespace Vexa.Client.UI
             return b;
         }
 
-        public void ShowSettings(bool on) { _settings.Show(on); _main.Show(!on); }
+        public void ShowSettings(bool on)
+        {
+            if (on && !_settings.Visible()) _settingsView.Refresh();
+            _settings.Show(on); _main.Show(!on);
+        }
         public bool SettingsOpen => _settings.Visible();
 
         public void Open(ClientGame c)
@@ -466,7 +477,7 @@ namespace Vexa.Client.UI
             ShowSettings(false);
             bool rounds = c != null && (c.Mode == GameMode.Competitive || c.Mode == GameMode.Casual);
             _teamRow.Show(rounds);
-            _info.text = c == null ? "" : $"Ping {c.PingMs} ms · {c.TickRate} tick sunucu · Takım değişikliği sonraki raundda geçerli olur.";
+            _info.text = c == null ? "" : $"Ping {c.PingMs} ms · {c.TickRate} tick sunucu · Raund sırasında takım değiştirirsen ölürsün ve yeni takımında sonraki raundda doğarsın.";
         }
     }
 
@@ -497,7 +508,8 @@ namespace Vexa.Client.UI
         public void Open(ClientGame c)
         {
             bool rounds = c.Mode == GameMode.Competitive || c.Mode == GameMode.Casual;
-            var entries = c.Scores.Values.OrderByDescending(e => e.Score).ThenByDescending(e => e.Kills).ToList();
+            var entries = rounds ? c.Scores.Values.OrderByDescending(e => e.Score).ThenByDescending(e => e.Kills).ToList()
+                                 : c.Scores.Values.OrderByDescending(e => e.Kills).ThenBy(e => e.Deaths).ToList(); // deathmatch winner = most kills
             if (rounds)
             {
                 int mine = c.LocalTeam == Team.T ? c.ScoreT : c.ScoreCT, theirs = c.LocalTeam == Team.T ? c.ScoreCT : c.ScoreT;

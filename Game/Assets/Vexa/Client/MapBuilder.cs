@@ -27,6 +27,7 @@ namespace Vexa.Client
         {
             var sh = Shader.Find("Universal Render Pipeline/Lit");
             if (sh == null) sh = Shader.Find("Standard");
+            if (sh == null) sh = Shader.Find("Sprites/Default"); // always included in builds
             var m = new Material(sh);
             m.color = c;
             if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0.15f);

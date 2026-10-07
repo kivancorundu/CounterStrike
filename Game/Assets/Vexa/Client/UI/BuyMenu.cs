@@ -30,6 +30,7 @@ namespace Vexa.Client.UI
         private readonly List<(Label k, Label v)> _loadoutRows = new List<(Label, Label)>();
         private int _pendingColumn = -1;
         public int Money;
+        public event System.Action Close;
 
         public BuyMenuView()
         {
@@ -47,7 +48,9 @@ namespace Vexa.Client.UI
             var moneyBox = U.Col().Align(Align.FlexEnd);
             _money = U.Head("$0", 44, Theme.Accent);
             moneyBox.Kids(U.Text("Paran", 13, Fonts.Body, Theme.Muted), _money);
-            header.Kids(titles, U.Spacer(), timeBox, moneyBox);
+            var close = new UButton("KAPAT", ButtonStyle.Ghost, () => Close?.Invoke());
+            close.Self(Align.Center);
+            header.Kids(titles, U.Spacer(), timeBox, moneyBox, close);
             hierarchy.Add(header);
 
             _columns = U.Row(10).Abs(56, 170, 400);

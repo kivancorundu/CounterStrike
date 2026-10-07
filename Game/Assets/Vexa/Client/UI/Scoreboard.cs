@@ -23,6 +23,7 @@ namespace Vexa.Client.UI
         public ScoreboardView()
         {
             this.Fill().Bg(new Color(0.02f, 0.03f, 0.05f, 0.78f));
+            pickingMode = PickingMode.Ignore; // display only: taps pass through to the HUD buttons below
             var wrap = U.Col(14).CenterX(60);
             var inner = U.Col(14).W(1180);
             wrap.Add(inner);

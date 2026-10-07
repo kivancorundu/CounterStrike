@@ -103,8 +103,16 @@ namespace Vexa.Core.Client
             _replayCtx = new SimContext { Shots = null, Events = null };
             _net.Connected += _ => SendHello();
             _net.Received += OnReceived;
-            _net.Disconnected += _ => Log?.Invoke("disconnected");
+            _net.Disconnected += _ => { Disconnected = true; Log?.Invoke("disconnected"); };
         }
+
+        /// <summary>True once the transport reports the server connection is gone.</summary>
+        public bool Disconnected { get; private set; }
+        /// <summary>Server time (seconds) when the local player last came alive.</summary>
+        public float LocalSpawnTime { get; private set; }
+        /// <summary>Raised when the local player goes from dead to alive (round start, respawn).</summary>
+        public event Action Spawned;
+        private bool _wasAlive;
 
         public Remote GetRemote(int id) => _remotes.TryGetValue(id, out var r) ? r : null;
         public int PingMs => _net.GetRttMs(0);
@@ -145,6 +153,8 @@ namespace Vexa.Core.Client
                 steps++;
             }
             if (steps == 8) _acc = 0;
+            if (Predicted.Alive && !_wasAlive) { LocalSpawnTime = (float)(ServerTickEstimate / TickRate); Spawned?.Invoke(); }
+            _wasAlive = Predicted.Alive;
             float decay = (float)Math.Exp(-realDt * 15.0);
             CorrectionOffset *= decay;
         }
@@ -210,7 +220,8 @@ namespace Vexa.Core.Client
             get
             {
                 if (!Predicted.Alive) return false;
-                if (Mode == GameMode.Practice || Mode == GameMode.Deathmatch) return true;
+                if (Mode == GameMode.Practice) return true;
+                if (Mode == GameMode.Deathmatch) return ServerTickEstimate / TickRate - LocalSpawnTime <= 15.0;
                 if (Header.Phase == GamePhase.Freeze) return InBuyZone;
                 return Header.Phase == GamePhase.Live && ServerTickEstimate <= Header.BuyEndTick && InBuyZone;
             }
@@ -242,6 +253,7 @@ namespace Vexa.Core.Client
                 case Msg.Welcome:
                     {
                         LocalId = _r.Byte();
+                        _remotes.Remove(LocalId); // our own PlayerInfo can arrive before Welcome
                         TickRate = _r.UShort();
                         Dt = 1f / TickRate;
                         int serverTick = _r.Int();

@@ -34,6 +34,7 @@ namespace Vexa.Client.UI
         private readonly VisualElement _banner, _bannerBar;
         private readonly Label _bannerTitle, _bannerSub;
         private float _bannerUntil;
+        private int _bannerPriority;
         private readonly VisualElement _roundEnd, _roundEndBand;
         private readonly Label _roundEndTitle, _roundEndReason, _roundEndMvp;
         private float _roundEndUntil;
@@ -342,8 +343,11 @@ namespace Vexa.Client.UI
             _toastUntil = Time.unscaledTime + seconds;
         }
 
-        public void Banner(string title, string sub, Color color, float seconds = 3f)
+        /// <summary>Show a center banner. A lower-priority banner never replaces a higher one that is still up.</summary>
+        public void Banner(string title, string sub, Color color, float seconds = 3f, int priority = 0)
         {
+            if (Time.unscaledTime < _bannerUntil && priority < _bannerPriority) return;
+            _bannerPriority = priority;
             _bannerTitle.text = title;
             _bannerSub.text = sub ?? "";
             _bannerSub.Show(!string.IsNullOrEmpty(sub));
@@ -457,10 +461,10 @@ namespace Vexa.Client.UI
                     Banner("RAUND " + e.A, c.Mode == GameMode.Competitive || c.Mode == GameMode.Casual ? "Satın alma süresi" : null, Theme.Accent, 2f);
                     break;
                 case GameEventType.BombPlanted:
-                    Banner($"BOMBA {e.Text} BÖLGESİNE KURULDU", "40 saniye içinde patlayacak", Theme.Danger, 3.5f);
+                    Banner($"BOMBA {e.Text} BÖLGESİNE KURULDU", "40 saniye içinde patlayacak", Theme.Danger, 3.5f, 1);
                     break;
                 case GameEventType.BombDefused:
-                    Banner("BOMBA İMHA EDİLDİ", null, Theme.CT, 3f);
+                    Banner("BOMBA İMHA EDİLDİ", null, Theme.CT, 3f, 1);
                     break;
                 case GameEventType.BombDropped:
                     if (c.LocalTeam == Team.T) Toast("Bomba yere düştü", Theme.T);
@@ -469,10 +473,10 @@ namespace Vexa.Client.UI
                     if (e.A == c.LocalId) Toast("Bomba sende — bölgeye götür", Theme.T);
                     break;
                 case GameEventType.Halftime:
-                    Banner(string.IsNullOrEmpty(e.Text) ? "DEVRE ARASI" : e.Text, "Takımlar taraf değiştiriyor", Theme.Accent, 4f);
+                    Banner(string.IsNullOrEmpty(e.Text) ? "DEVRE ARASI" : e.Text, "Takımlar taraf değiştiriyor", Theme.Accent, 4f, 2);
                     break;
                 case GameEventType.Message:
-                    Banner(e.Text, null, Theme.Accent, 3f);
+                    Banner(e.Text, null, Theme.Accent, 4f, 2);
                     break;
                 case GameEventType.Purchase:
                     SetMoney(e.B, true);
@@ -551,7 +555,8 @@ namespace Vexa.Client.UI
             // ---- crosshair ----
             bool scoped = st.Alive && st.Zoom > 0 && st.ActiveDef.Category == WeaponCategory.Sniper;
             bool showCross = st.Alive && !scoped;
-            _crosshair.Show(showCross);
+            _crosshair.Show(st.Alive);          // stays visible while scoped so the hit marker still shows
+            _crosshair.SetBarsVisible(showCross);
             if (showCross)
             {
                 _crosshair.SetStyle(VexaSettings.Crosshair);

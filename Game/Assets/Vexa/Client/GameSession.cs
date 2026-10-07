@@ -124,6 +124,7 @@ namespace Vexa.Client
             Client.Log += m => Debug.Log("[client] " + m);
             Client.ShotFired += OnShot;
             Client.Hit += OnHit;
+            Client.Spawned += OnSpawned;
         }
 
         void Awake()
@@ -148,6 +149,12 @@ namespace Vexa.Client
             Input.UpdateFrame();
             Client.Update(dt, Input.SampleCommand);
 
+            if (Client.Disconnected)
+            {
+                Status = Client.Welcomed ? "Sunucu bağlantısı koptu." : "Sunucuya bağlanılamadı.";
+                Failed = true;
+                return;
+            }
             if (!Client.Welcomed)
             {
                 if (Time.unscaledTime - _connectStarted > 10f) { Status = "Bağlantı zaman aşımı. Sunucu adresini kontrol et."; Failed = true; }
@@ -197,6 +204,20 @@ namespace Vexa.Client
             }
             else muzzle = shot.Origin.ToU() + UnityBridge.ViewRotation(shot.Yaw, shot.Pitch) * new Vector3(0.1f, -0.15f, 0.6f);
             _effects.Shot(Client.World, shot, muzzle, local);
+        }
+
+        /// <summary>Face the way the spawn point faces (our view angles drive the simulation, so the server's spawn yaw must be copied here).</summary>
+        void OnSpawned()
+        {
+            var map = Client.Map;
+            if (map == null) return;
+            var pos = Client.Predicted.Position;
+            float best = 2.0f;
+            foreach (var sp in map.Spawns)
+            {
+                float d = System.Numerics.Vector3.Distance(sp.Position, pos);
+                if (d < best) { best = d; Input.Yaw = sp.Yaw; Input.Pitch = 0; }
+            }
         }
 
         void OnHit(HitEvent h)

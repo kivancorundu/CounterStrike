@@ -25,18 +25,18 @@ namespace Vexa.Client.UI
         public static CrosshairStyle Small => new CrosshairStyle { Length = 3, Gap = 1, Thickness = 1, Outline = 0, ColorIndex = 3 };
         public static CrosshairStyle T => new CrosshairStyle { Length = 5, Gap = 2, Thickness = 1.5f, Outline = 1, Dot = true, TStyle = true, ColorIndex = 0 };
 
-        /// <summary>Short text code so players can share crosshairs ("VX-6-3-2-1-001-1").</summary>
+        /// <summary>Short text code so players can share crosshairs ("VX:6:-1:2:1:001:1"; ':' because gaps can be negative).</summary>
         public string ToCode()
         {
             string F(float v) => v.ToString("0.#", CultureInfo.InvariantCulture);
-            return $"VX-{F(Length)}-{F(Gap)}-{F(Thickness)}-{F(Outline)}-{(Dot ? 1 : 0)}{(TStyle ? 1 : 0)}{(Dynamic ? 1 : 0)}-{ColorIndex}";
+            return $"VX:{F(Length)}:{F(Gap)}:{F(Thickness)}:{F(Outline)}:{(Dot ? 1 : 0)}{(TStyle ? 1 : 0)}{(Dynamic ? 1 : 0)}:{ColorIndex}";
         }
 
         public static bool TryParse(string code, out CrosshairStyle s)
         {
             s = Classic;
             if (string.IsNullOrEmpty(code)) return false;
-            var p = code.Trim().ToUpperInvariant().Split('-');
+            var p = code.Trim().ToUpperInvariant().Split(':');
             if (p.Length != 7 || p[0] != "VX" || p[5].Length != 3) return false;
             bool ok = float.TryParse(p[1], NumberStyles.Float, CultureInfo.InvariantCulture, out s.Length)
                     & float.TryParse(p[2], NumberStyles.Float, CultureInfo.InvariantCulture, out s.Gap)
@@ -98,8 +98,29 @@ namespace Vexa.Client.UI
             Apply();
         }
 
+        private static bool _dirty;
+        private static float _nextFlush;
+        private static int _appliedQuality = int.MinValue;
+
+        /// <summary>Apply now; the disk write is batched (see <see cref="Flush"/>) so dragging a slider doesn't hitch.</summary>
         public static void Save()
         {
+            _dirty = true;
+            Apply();
+        }
+
+        /// <summary>Called every frame by the UI: writes PlayerPrefs at most once per second.</summary>
+        public static void FlushIfDue()
+        {
+            if (!_dirty || Time.unscaledTime < _nextFlush) return;
+            Flush();
+        }
+
+        public static void Flush()
+        {
+            if (!_dirty) return;
+            _dirty = false;
+            _nextFlush = Time.unscaledTime + 1f;
             PlayerPrefs.SetString("vexa.name", Name);
             PlayerPrefs.SetFloat("vexa.sens", Sensitivity);
             PlayerPrefs.SetFloat("vexa.zoomsens", ZoomSensitivity);
@@ -122,7 +143,6 @@ namespace Vexa.Client.UI
             PlayerPrefs.SetInt("vexa.tick", LastTick);
             PlayerPrefs.SetInt("vexa.dmbots", LastDmBots);
             PlayerPrefs.Save();
-            Apply();
         }
 
         public static readonly string[] QualityNames = { "DÜŞÜK", "ORTA", "YÜKSEK", "ULTRA" };
@@ -131,8 +151,11 @@ namespace Vexa.Client.UI
         public static void Apply()
         {
             int levels = QualitySettings.names.Length;
-            if (Quality >= 0 && levels > 0)
+            if (Quality >= 0 && levels > 0 && Quality != _appliedQuality)
+            {
+                _appliedQuality = Quality;
                 QualitySettings.SetQualityLevel(Mathf.Clamp(Mathf.RoundToInt(Quality / 3f * (levels - 1)), 0, levels - 1), true);
+            }
             if (Application.isMobilePlatform) Application.targetFrameRate = FpsCap > 0 ? FpsCap : 60;
             else Application.targetFrameRate = FpsCap > 0 ? FpsCap : -1;
             AudioListener.volume = Volume;

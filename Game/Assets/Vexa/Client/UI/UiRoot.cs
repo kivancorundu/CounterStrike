@@ -65,6 +65,7 @@ namespace Vexa.Client.UI
             _pause.Leave += LeaveMatch;
             _pause.PickTeam = t => { _session?.Client?.SelectTeam(t); _pauseOpen = false; };
             _matchEnd.Leave += LeaveMatch;
+            _buy.Close += () => _buyOpen = false;
             _loading.Cancel += LeaveMatch;
             _hud.MobilePause = () => _pauseOpen = true;
             _hud.MobileBuy = () => ToggleBuy();
@@ -78,8 +79,12 @@ namespace Vexa.Client.UI
             _pauseOpen = _buyOpen = false;
         }
 
+        void OnApplicationQuit() => VexaSettings.Flush();
+        void OnApplicationPause(bool paused) { if (paused) VexaSettings.Flush(); }
+
         void Update()
         {
+            VexaSettings.FlushIfDue();
             var s = GameSession.Current;
             if (s != null && s.Failed)
             {

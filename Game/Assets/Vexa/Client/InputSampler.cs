@@ -88,7 +88,7 @@ namespace Vexa.Client
             var m = Mouse.current;
             if (m == null || Cursor.lockState != CursorLockMode.Locked) return Vector2.zero;
             var d = m.delta.ReadValue();
-            return new Vector2(d.x, -d.y);
+            return new Vector2(d.x, d.y); // Input System: +y = mouse moved up = look up (pitch up positive)
         }
         static bool K(Key k) => Keyboard.current != null && Keyboard.current[k].isPressed;
         static bool KD(Key k) => Keyboard.current != null && Keyboard.current[k].wasPressedThisFrame;
