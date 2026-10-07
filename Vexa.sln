@@ -1,0 +1,52 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tools", "Tools", "{5162452C-F063-401F-B38D-64DBDE829BF0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Vexa.Core", "Tools\CoreBuild\Vexa.Core.csproj", "{BEABC9B5-19A7-4D23-9B2F-6C85AB68A80D}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{19B6979F-0B98-4834-9B3F-EF86A3839F08}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Vexa.Tests", "Tests\Vexa.Tests\Vexa.Tests.csproj", "{2E6408F3-B837-4E97-9F42-E4AFFD5C9E42}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Server", "Server", "{02907EA0-BA83-4694-9710-DEAEDFEB8E63}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Vexa.Server", "Server\Vexa.Server\Vexa.Server.csproj", "{E9F96869-D05F-4610-8887-330505D700E1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Vexa.UnityCheck", "Tools\UnityCheck\Vexa.UnityCheck.csproj", "{77BD21C8-7C45-4C8C-A086-3B57002D7CCC}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{BEABC9B5-19A7-4D23-9B2F-6C85AB68A80D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BEABC9B5-19A7-4D23-9B2F-6C85AB68A80D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BEABC9B5-19A7-4D23-9B2F-6C85AB68A80D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BEABC9B5-19A7-4D23-9B2F-6C85AB68A80D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2E6408F3-B837-4E97-9F42-E4AFFD5C9E42}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2E6408F3-B837-4E97-9F42-E4AFFD5C9E42}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2E6408F3-B837-4E97-9F42-E4AFFD5C9E42}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2E6408F3-B837-4E97-9F42-E4AFFD5C9E42}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E9F96869-D05F-4610-8887-330505D700E1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E9F96869-D05F-4610-8887-330505D700E1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E9F96869-D05F-4610-8887-330505D700E1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E9F96869-D05F-4610-8887-330505D700E1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{77BD21C8-7C45-4C8C-A086-3B57002D7CCC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{77BD21C8-7C45-4C8C-A086-3B57002D7CCC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{77BD21C8-7C45-4C8C-A086-3B57002D7CCC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{77BD21C8-7C45-4C8C-A086-3B57002D7CCC}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{BEABC9B5-19A7-4D23-9B2F-6C85AB68A80D} = {5162452C-F063-401F-B38D-64DBDE829BF0}
+		{2E6408F3-B837-4E97-9F42-E4AFFD5C9E42} = {19B6979F-0B98-4834-9B3F-EF86A3839F08}
+		{E9F96869-D05F-4610-8887-330505D700E1} = {02907EA0-BA83-4694-9710-DEAEDFEB8E63}
+		{77BD21C8-7C45-4C8C-A086-3B57002D7CCC} = {5162452C-F063-401F-B38D-64DBDE829BF0}
+	EndGlobalSection
+EndGlobal

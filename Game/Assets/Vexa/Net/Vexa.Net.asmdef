@@ -1,0 +1,14 @@
+{
+    "name": "Vexa.Net",
+    "rootNamespace": "Vexa.Net",
+    "references": ["Vexa.Core"],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": ["LiteNetLib.dll"],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Compile-checks the Unity client scripts without a Unity install, against UnityEngine reference
+    assemblies from NuGet (2021.3 API surface; Unity 6 is a superset for what we use).
+    Uses the legacy Input Manager code path (the new Input System path is compiled inside Unity).
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants>$(DefineConstants);ENABLE_LEGACY_INPUT_MANAGER;UNITY_2021_3_OR_NEWER</DefineConstants>
+    <NoWarn>CS0618</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="UnityEngine.Modules" Version="2021.3.33" />
+    <ProjectReference Include="../CoreBuild/Vexa.Core.csproj" />
+    <Reference Include="LiteNetLib"><HintPath>../../Game/Assets/Plugins/LiteNetLib/LiteNetLib.dll</HintPath></Reference>
+    <Compile Include="../../Game/Assets/Vexa/Net/**/*.cs" />
+    <Compile Include="../../Game/Assets/Vexa/Client/**/*.cs" />
+  </ItemGroup>
+</Project>

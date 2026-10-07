@@ -1,3 +1,18 @@
-node_modules/
+# .NET
+bin/
+obj/
+*.user
+# Unity
+Game/[Ll]ibrary/
+Game/[Tt]emp/
+Game/[Oo]bj/
+Game/[Bb]uild/
+Game/[Bb]uilds/
+Game/[Ll]ogs/
+Game/[Uu]ser[Ss]ettings/
+Game/*.csproj
+Game/*.sln
+Game/.vs/
 .DS_Store
 *.log
+node_modules/

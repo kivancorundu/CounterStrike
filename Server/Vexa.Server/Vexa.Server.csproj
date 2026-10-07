@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Headless dedicated server: pure .NET, no Unity. Runs the same simulation code as the game client. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <AssemblyName>vexa-server</AssemblyName>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Tools/CoreBuild/Vexa.Core.csproj" />
+    <Reference Include="LiteNetLib">
+      <HintPath>../../Game/Assets/Plugins/LiteNetLib/LiteNetLib.dll</HintPath>
+    </Reference>
+    <Compile Include="../../Game/Assets/Vexa/Net/**/*.cs" />
+    <None Include="../../Game/Assets/StreamingAssets/Maps/*.vxmap" LinkBase="Maps" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,14 @@
+{
+    "name": "Vexa.Editor",
+    "rootNamespace": "Vexa.EditorTools",
+    "references": ["Vexa.Core", "Vexa.Client"],
+    "includePlatforms": ["Editor"],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
