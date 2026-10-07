@@ -40,6 +40,22 @@ namespace Vexa.Core
         void OnShot(in ShotInfo shot);
     }
 
+    public struct GrenadeThrow
+    {
+        public int OwnerId;
+        public GrenadeType Type;
+        public Vector3 Origin;
+        public Vector3 Velocity;
+        public int CmdTick;
+    }
+
+    /// <summary>Gameplay events produced by the shared simulation (besides shots).</summary>
+    public interface ISimEvents
+    {
+        void OnThrow(in GrenadeThrow t);
+        void OnPlanted(int playerId, Vector3 position, string site);
+    }
+
     /// <summary>Weapon state machine: switching, deploy, reload, fire rate, burst, zoom, silencer, recoil and inaccuracy.</summary>
     public static class WeaponLogic
     {
@@ -69,8 +85,11 @@ namespace Vexa.Core
             return v + s.AccumInaccuracy;
         }
 
-        public static void Tick(ref PlayerState s, in PlayerInput cmd, float time, float dt, int playerId, bool frozen, IShotSink sink)
+        public static void Tick(ref PlayerState s, in PlayerInput cmd, float time, float dt, SimContext ctx)
         {
+            int playerId = ctx.PlayerId;
+            bool frozen = ctx.Frozen;
+            IShotSink sink = ctx.Shots;
             bool atk = cmd.Has(Buttons.Attack), atk2 = cmd.Has(Buttons.Attack2);
             bool atkP = atk && !s.AttackHeld, atk2P = atk2 && !s.Attack2Held;
             bool relP = cmd.Has(Buttons.Reload) && !s.ReloadHeld;
@@ -78,7 +97,17 @@ namespace Vexa.Core
             s.AttackHeld = atk; s.Attack2Held = atk2; s.ReloadHeld = cmd.Has(Buttons.Reload); s.InspectHeld = cmd.Has(Buttons.Inspect);
             if (!s.Alive) return;
 
+            if (s.SwitchBackTime > 0 && time >= s.SwitchBackTime)
+            {
+                s.SwitchBackTime = 0;
+                if (s.Active == WeaponSlotKind.Grenade && s.GrenadeCount(s.ActiveGrenade) == 0)
+                {
+                    var back = s.LastActive != WeaponSlotKind.Grenade && s.HasSlot(s.LastActive) ? s.LastActive : s.BestSlot;
+                    SelectSlot(ref s, back, time);
+                }
+            }
             if (cmd.Select != WeaponSelect.None) Select(ref s, cmd.Select, time);
+            if (!s.HasSlot(s.Active)) SelectSlot(ref s, s.BestSlot, time);
             var def = s.ActiveDef;
 
             // recoil / inaccuracy recovery
@@ -108,6 +137,12 @@ namespace Vexa.Core
                         shot.Flags = ShotFlags.Melee | (heavy ? ShotFlags.Heavy : 0);
                         sink?.OnShot(shot);
                     }
+                    return;
+                case WeaponCategory.Grenade:
+                    GrenadeTick(ref s, atk, atk2, time, ctx);
+                    return;
+                case WeaponCategory.Bomb:
+                    BombTick(ref s, atk, time, ctx);
                     return;
                 case WeaponCategory.Taser:
                     {
@@ -283,30 +318,116 @@ namespace Vexa.Core
                 case WeaponSelect.Primary: target = WeaponSlotKind.Primary; break;
                 case WeaponSelect.Secondary: target = WeaponSlotKind.Secondary; break;
                 case WeaponSelect.Melee: target = WeaponSlotKind.Melee; break;
+                case WeaponSelect.Grenade:
+                    if (s.GrenadeTotal == 0) return;
+                    if (s.Active == WeaponSlotKind.Grenade)
+                    {
+                        // pressing again cycles through the grenades you carry
+                        var next = NextGrenade(s, s.ActiveGrenade);
+                        if (next != s.ActiveGrenade) { s.ActiveGrenade = next; s.PinTime = 0; s.DeployEndTime = time + 0.4f; }
+                        return;
+                    }
+                    if (s.GrenadeCount(s.ActiveGrenade) == 0) s.ActiveGrenade = NextGrenade(s, GrenadeType.None);
+                    target = WeaponSlotKind.Grenade; break;
+                case WeaponSelect.Bomb: target = WeaponSlotKind.Bomb; break;
                 case WeaponSelect.LastUsed: target = s.LastActive; break;
                 case WeaponSelect.Next: target = Cycle(s, 1); break;
                 case WeaponSelect.Previous: target = Cycle(s, -1); break;
                 default: return;
             }
-            if (target == WeaponSlotKind.None || target == s.Active || s.GetSlot(target).IsEmpty) return;
-            s.LastActive = s.Active;
+            SelectSlot(ref s, target, time);
+        }
+
+        public static void SelectSlot(ref PlayerState s, WeaponSlotKind target, float time)
+        {
+            if (target == WeaponSlotKind.None || target == s.Active || !s.HasSlot(target)) return;
+            if (target == WeaponSlotKind.Grenade && s.GrenadeCount(s.ActiveGrenade) == 0) s.ActiveGrenade = NextGrenade(s, GrenadeType.None);
+            if (s.Active != WeaponSlotKind.None) s.LastActive = s.Active;
             s.Active = target;
             var def = s.ActiveDef;
             s.DeployEndTime = time + def.DeployTime;
             s.NextAttackTime = MathF.Max(s.NextAttackTime, s.DeployEndTime);
             s.Reloading = false; s.Zoom = 0; s.ZoomResumeTime = 0; s.BurstLeft = 0; s.PrimeStartTime = 0; s.InspectEndTime = 0;
+            s.PinTime = 0; s.Planting = false; s.PlantStartTime = 0;
+        }
+
+        static readonly GrenadeType[] NadeOrder = { GrenadeType.HE, GrenadeType.Flash, GrenadeType.Smoke, GrenadeType.Molotov, GrenadeType.Decoy };
+
+        public static GrenadeType NextGrenade(in PlayerState s, GrenadeType current)
+        {
+            int start = 0;
+            var cur = current == GrenadeType.Incendiary ? GrenadeType.Molotov : current;
+            for (int i = 0; i < NadeOrder.Length; i++) if (NadeOrder[i] == cur) start = i + 1;
+            for (int k = 0; k < NadeOrder.Length; k++)
+            {
+                var g = NadeOrder[(start + k) % NadeOrder.Length];
+                if (s.GrenadeCount(g) > 0) return g == GrenadeType.Molotov ? s.FireGrenadeType : g;
+            }
+            return GrenadeType.None;
         }
 
         static WeaponSlotKind Cycle(in PlayerState s, int dir)
         {
-            var order = new[] { WeaponSlotKind.Primary, WeaponSlotKind.Secondary, WeaponSlotKind.Melee };
+            var order = new[] { WeaponSlotKind.Primary, WeaponSlotKind.Secondary, WeaponSlotKind.Melee, WeaponSlotKind.Grenade, WeaponSlotKind.Bomb };
             int k = Array.IndexOf(order, s.Active);
             for (int i = 1; i <= order.Length; i++)
             {
                 var c = order[((k + dir * i) % order.Length + order.Length) % order.Length];
-                if (!s.GetSlot(c).IsEmpty) return c;
+                if (s.HasSlot(c)) return c;
             }
             return s.Active;
+        }
+
+        // ---------------- grenades ----------------
+        static void GrenadeTick(ref PlayerState s, bool atk, bool atk2, float time, SimContext ctx)
+        {
+            if (s.GrenadeCount(s.ActiveGrenade) == 0) { s.PinTime = 0; return; }
+            if (s.PinTime <= 0)
+            {
+                if ((atk || atk2) && time >= s.NextAttackTime) { s.PinTime = time; s.ThrowStrength = atk && atk2 ? 0.5f : atk ? 1f : 0.3f; }
+                return;
+            }
+            if (atk || atk2) { s.ThrowStrength = atk && atk2 ? 0.5f : atk ? 1f : 0.3f; return; }
+            if (time - s.PinTime < 0.15f) return;
+            var type = s.ActiveGrenade;
+            s.AddGrenade(type, -1);
+            var t = new GrenadeThrow { OwnerId = ctx.PlayerId, Type = type, Origin = s.EyePosition, Velocity = ThrowVelocity(s, s.ThrowStrength) };
+            s.PinTime = 0;
+            s.NextAttackTime = time + 0.5f;
+            s.SwitchBackTime = time + 0.4f;
+            s.LastShotTime = time;
+            ctx.Events?.OnThrow(t);
+            if (s.GrenadeCount(type) == 0 && s.GrenadeTotal > 0) s.ActiveGrenade = NextGrenade(s, type);
+        }
+
+        /// <summary>CS throw: aims a bit above the crosshair, 675 HU/s scaled by strength, plus 1.25x player velocity.</summary>
+        public static Vector3 ThrowVelocity(in PlayerState s, float strength)
+        {
+            float src = -s.Pitch;
+            src = src < 0 ? -10f + src * (80f / 90f) : -10f + src * (100f / 90f);
+            var dir = VMath.Forward(s.Yaw, -src);
+            float speed = 675f * VMath.HU * (VMath.Clamp01(strength) * 0.7f + 0.3f);
+            return dir * speed + s.Velocity * 1.25f;
+        }
+
+        // ---------------- C4 ----------------
+        public const float PlantTime = 3.2f;
+
+        static void BombTick(ref PlayerState s, bool atk, float time, SimContext ctx)
+        {
+            string site = ctx.Map?.SiteAt(s.Position);
+            if (atk && s.HasC4 && s.OnGround && site != null && ctx.PlantAllowed)
+            {
+                if (!s.Planting) { s.Planting = true; s.PlantStartTime = time; }
+                else if (time - s.PlantStartTime >= PlantTime)
+                {
+                    s.Planting = false; s.PlantStartTime = 0;
+                    s.HasC4 = false;
+                    ctx.Events?.OnPlanted(ctx.PlayerId, s.Position, site);
+                    SelectSlot(ref s, s.BestSlot, time);
+                }
+            }
+            else { s.Planting = false; s.PlantStartTime = 0; }
         }
 
         /// <summary>Give a weapon (buy / pick up). Returns the replaced weapon (to drop), if any.</summary>

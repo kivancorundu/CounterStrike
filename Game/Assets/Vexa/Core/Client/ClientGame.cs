@@ -14,7 +14,7 @@ namespace Vexa.Core.Client
     ///  * reports its render time with every command so the server can lag-compensate shots
     /// The Unity layer only feeds input, reads state for rendering and listens to events.
     /// </summary>
-    public sealed class ClientGame : IShotSink
+    public sealed class ClientGame : IShotSink, ISimEvents
     {
         public sealed class Remote
         {
@@ -66,6 +66,27 @@ namespace Vexa.Core.Client
         public float LastCorrection { get; private set; }
 
         public IEnumerable<Remote> Remotes => _remotes.Values;
+        // ---- match view (filled from server messages) ----
+        public GameMode Mode { get; private set; }
+        public MatchHeader Header;
+        public int Round, ScoreT, ScoreCT, MaxRounds, WinRounds, HalfRounds;
+        public readonly List<RoundResult> History = new List<RoundResult>();
+        public readonly Dictionary<int, ScoreEntry> Scores = new Dictionary<int, ScoreEntry>();
+        public BombInfo Bomb;
+        public readonly List<ProjectileInfo> Projectiles = new List<ProjectileInfo>();
+        public readonly List<AreaInfo> Smokes = new List<AreaInfo>();
+        public readonly List<AreaInfo> Fires = new List<AreaInfo>();
+        public readonly List<ItemInfo> WorldItems = new List<ItemInfo>();
+        public int LatestServerTick => _latestSnapTick;
+        public float PlayerTime => CmdTick * Dt;
+        public Team LocalTeam => Predicted.Team;
+
+        public struct RoundEndInfo { public Team Winner; public RoundEndReason Reason; public int MvpId; public byte MvpReason; public int MvpKills; }
+        public event Action<RoundEndInfo> RoundEnded;
+        public event Action<GameEvent> GameEventReceived;
+        public event Action<GrenadeThrow> LocalThrow;
+        public event Action MatchStateChanged;
+
         public event Action<ShotInfo, bool> ShotFired;  // (shot, isLocalPrediction)
         public event Action<HitEvent> Hit;
         public event Action<KillEvent> Killed;
@@ -78,8 +99,8 @@ namespace Vexa.Core.Client
             _net = net;
             PlayerName = playerName;
             MapLoader = mapLoader;
-            _ctx = new SimContext { Shots = this };
-            _replayCtx = new SimContext { Shots = null };
+            _ctx = new SimContext { Shots = this, Events = this };
+            _replayCtx = new SimContext { Shots = null, Events = null };
             _net.Connected += _ => SendHello();
             _net.Received += OnReceived;
             _net.Disconnected += _ => Log?.Invoke("disconnected");
@@ -137,7 +158,9 @@ namespace Vexa.Core.Client
             int i = CmdTick % BufSize;
             _cmds[i] = cmd;
             PreviousPredicted = Predicted;
-            _ctx.World = World; _ctx.Dt = Dt; _ctx.PlayerId = LocalId;
+            _ctx.World = World; _ctx.Dt = Dt; _ctx.PlayerId = LocalId; _ctx.Map = Map;
+            _ctx.Frozen = Header.Phase == GamePhase.Freeze || Header.Phase == GamePhase.MatchOver;
+            _ctx.PlantAllowed = Header.Phase == GamePhase.Live && Bomb.State == BombState.Carried;
             PlayerSimulation.Step(ref Predicted, cmd, _ctx);
             _states[i] = Predicted;
             _valid[i] = true;
@@ -159,6 +182,56 @@ namespace Vexa.Core.Client
 
         // local prediction effects (never fired during replays)
         public void OnShot(in ShotInfo shot) => ShotFired?.Invoke(shot, true);
+        public void OnThrow(in GrenadeThrow t) => LocalThrow?.Invoke(t);
+        public void OnPlanted(int playerId, Vector3 position, string site) { }
+
+        public void SelectTeam(Team t)
+        {
+            _w.Reset(); _w.Byte((byte)Msg.TeamSelect); _w.Byte((byte)t);
+            _net.Send(0, _w.Data, _w.Length, Delivery.ReliableOrdered);
+        }
+
+        public void RequestBuy(ItemId item)
+        {
+            _w.Reset(); _w.Byte((byte)Msg.Buy); _w.Byte((byte)item);
+            _net.Send(0, _w.Data, _w.Length, Delivery.ReliableOrdered);
+        }
+
+        public string NameOf(int id) => id == LocalId ? PlayerName : (GetRemote(id)?.Name ?? ("#" + id));
+        public Team TeamOf(int id) => id == LocalId ? Predicted.Team : (GetRemote(id)?.Team ?? Team.None);
+
+        /// <summary>Seconds left on the round / phase clock.</summary>
+        public float PhaseTimeLeft => Math.Max(0f, (Header.PhaseEndTick - (float)ServerTickEstimate) / TickRate);
+        public float BombTimeLeft => Math.Max(0f, (Bomb.ExplodeTick - (float)ServerTickEstimate) / TickRate);
+        public float DefuseProgress => Bomb.DefuseEndTick > Bomb.DefuseStartTick && Bomb.DefuserId != 0
+            ? VMath.Clamp01(((float)ServerTickEstimate - Bomb.DefuseStartTick) / (Bomb.DefuseEndTick - Bomb.DefuseStartTick)) : 0f;
+        public bool CanBuyNow
+        {
+            get
+            {
+                if (!Predicted.Alive) return false;
+                if (Mode == GameMode.Practice || Mode == GameMode.Deathmatch) return true;
+                if (Header.Phase == GamePhase.Freeze) return InBuyZone;
+                return Header.Phase == GamePhase.Live && ServerTickEstimate <= Header.BuyEndTick && InBuyZone;
+            }
+        }
+        public bool InBuyZone
+        {
+            get
+            {
+                if (Map == null) return false;
+                bool any = false;
+                foreach (var (team, zone) in Map.BuyZones)
+                {
+                    if (team != Predicted.Team) continue;
+                    any = true;
+                    if (zone.Contains(Predicted.Position)) return true;
+                }
+                if (any) return false;
+                foreach (var sp in Map.Spawns) if (sp.Team == Predicted.Team && Vector3.Distance(sp.Position, Predicted.Position) < 15f) return true;
+                return false;
+            }
+        }
 
         private void OnReceived(int peer, byte[] data, int len)
         {
@@ -183,6 +256,32 @@ namespace Vexa.Core.Client
                         break;
                     }
                 case Msg.Snapshot: ReadSnapshot(); break;
+                case Msg.MatchState:
+                    {
+                        Mode = (GameMode)_r.Byte(); Round = _r.Byte(); ScoreT = _r.Byte(); ScoreCT = _r.Byte();
+                        MaxRounds = _r.Byte(); WinRounds = _r.Byte(); HalfRounds = _r.Byte();
+                        int n = _r.Byte();
+                        History.Clear();
+                        for (int i = 0; i < n; i++) History.Add(new RoundResult { Winner = (Team)_r.Byte(), Reason = (RoundEndReason)_r.Byte() });
+                        MatchStateChanged?.Invoke();
+                        break;
+                    }
+                case Msg.Scoreboard:
+                    {
+                        int n = _r.Byte();
+                        Scores.Clear();
+                        for (int i = 0; i < n; i++) { var e = Protocol.ReadScore(_r); if (_r.Error) break; Scores[e.Id] = e; }
+                        break;
+                    }
+                case Msg.RoundEnd:
+                    {
+                        var info = new RoundEndInfo { Winner = (Team)_r.Byte(), Reason = (RoundEndReason)_r.Byte(), MvpId = _r.Byte(), MvpReason = _r.Byte(), MvpKills = _r.Byte() };
+                        RoundEnded?.Invoke(info);
+                        break;
+                    }
+                case Msg.Event:
+                    GameEventReceived?.Invoke(Protocol.ReadEvent(_r));
+                    break;
                 case Msg.PlayerInfo:
                     {
                         int id = _r.Byte();
@@ -209,7 +308,10 @@ namespace Vexa.Core.Client
                     }
                 case Msg.Kill:
                     {
-                        var k = new KillEvent { Killer = _r.Byte(), Victim = _r.Byte(), Weapon = (WeaponId)_r.Byte(), Headshot = _r.Bool(), Wallbang = _r.Bool() };
+                        var k = new KillEvent { Killer = _r.Byte(), Victim = _r.Byte(), Weapon = (WeaponId)_r.Byte() };
+                        byte kf = _r.Byte();
+                        k.Headshot = (kf & 1) != 0; k.Wallbang = (kf & 2) != 0; k.ThroughSmoke = (kf & 4) != 0; k.AttackerBlind = (kf & 8) != 0;
+                        k.Grenade = (GrenadeType)_r.Byte();
                         Killed?.Invoke(k);
                         break;
                     }
@@ -235,6 +337,21 @@ namespace Vexa.Core.Client
                 rm.Snaps.Add((tick, rs));
                 if (rm.Snaps.Count > 64) rm.Snaps.RemoveAt(0);
             }
+            Header = Protocol.ReadHeader(_r);
+            Bomb = Protocol.ReadBomb(_r);
+            Projectiles.Clear();
+            int np = _r.Byte();
+            for (int i = 0; i < np; i++) Projectiles.Add(new ProjectileInfo { Id = _r.UShort(), Type = (GrenadeType)_r.Byte(), Position = _r.Vec3() });
+            Smokes.Clear();
+            int ns = _r.Byte();
+            for (int i = 0; i < ns; i++) Smokes.Add(Protocol.ReadArea(_r));
+            Fires.Clear();
+            int nf = _r.Byte();
+            for (int i = 0; i < nf; i++) Fires.Add(Protocol.ReadArea(_r));
+            WorldItems.Clear();
+            int ni = _r.Byte();
+            for (int i = 0; i < ni; i++) WorldItems.Add(new ItemInfo { Id = _r.UShort(), Weapon = (WeaponId)_r.Byte(), Position = _r.Vec3() });
+            if (_r.Error) return;
             Reconcile(ack, serverState);
         }
 
@@ -257,7 +374,8 @@ namespace Vexa.Core.Client
             Mispredictions++;
             var before = Predicted.Position;
             var state = server;
-            _replayCtx.World = World; _replayCtx.Dt = Dt; _replayCtx.PlayerId = LocalId;
+            _replayCtx.World = World; _replayCtx.Dt = Dt; _replayCtx.PlayerId = LocalId; _replayCtx.Map = Map;
+            _replayCtx.Frozen = _ctx.Frozen; _replayCtx.PlantAllowed = _ctx.PlantAllowed;
             _states[i] = server;
             var prev = server;
             for (int t = ack + 1; t <= CmdTick; t++)

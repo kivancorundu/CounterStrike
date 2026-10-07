@@ -7,6 +7,9 @@ namespace Vexa.Core
         public int PlayerId;
         public bool Frozen;
         public IShotSink Shots;
+        public ISimEvents Events;
+        public MapData Map;
+        public bool PlantAllowed = true;
     }
 
     /// <summary>
@@ -23,12 +26,13 @@ namespace Vexa.Core
             {
                 s.AttackHeld = cmd.Has(Buttons.Attack);
                 s.Attack2Held = cmd.Has(Buttons.Attack2);
+                s.Yaw = cmd.Yaw; s.Pitch = cmd.Pitch;
                 return default;
             }
             var def = s.ActiveDef;
             float maxSpeed = s.Zoom > 0 ? def.ScopedSpeed : def.MoveSpeed;
             if (s.Reloading) maxSpeed = def.MoveSpeed;
-            var ev = PlayerMovement.Simulate(ref s, cmd, ctx.Dt, time, ctx.World, maxSpeed, ctx.Frozen);
+            var ev = PlayerMovement.Simulate(ref s, cmd, ctx.Dt, time, ctx.World, maxSpeed, ctx.Frozen || s.Planting || s.Defusing);
             if (ev.Landed)
             {
                 int fall = PlayerMovement.FallDamage(ev.FallSpeed);
@@ -38,7 +42,7 @@ namespace Vexa.Core
                     if (s.Health <= 0) { s.Health = 0; s.Alive = false; }
                 }
             }
-            WeaponLogic.Tick(ref s, cmd, time, ctx.Dt, ctx.PlayerId, ctx.Frozen, ctx.Shots);
+            WeaponLogic.Tick(ref s, cmd, time, ctx.Dt, ctx);
             return ev;
         }
     }

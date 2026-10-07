@@ -15,6 +15,59 @@ namespace Vexa.Core.Net
         PlayerLeft = 9,   // S->C
         Buy = 10,         // C->S  request an item
         Chat = 11,
+        MatchState = 12,  // S->C  scores / round / mode (reliable, on change)
+        Scoreboard = 13,  // S->C  per player stats + money (teammates only)
+        RoundEnd = 14,    // S->C  winner, reason, MVP
+        Event = 15,       // S->C  bomb planted/defused, grenade detonations, purchases...
+        TeamSelect = 16,  // C->S  0 auto / 1 T / 2 CT
+    }
+
+    public enum GameMode : byte { Deathmatch = 0, Competitive = 1, Casual = 2, Practice = 3 }
+    public enum GamePhase : byte { Warmup = 0, Freeze = 1, Live = 2, RoundEnd = 3, MatchOver = 4 }
+    public enum RoundEndReason : byte { None = 0, Elimination, BombExploded, BombDefused, TimeExpired }
+    public enum BombState : byte { None = 0, Carried, Dropped, Planted, Defused, Exploded }
+    public enum GameEventType : byte
+    {
+        RoundStart = 1, BombPlanted, BombDefused, BombExploded, BombDropped, BombPickedUp,
+        Detonation, Purchase, PurchaseDenied, Halftime, Message, DefuseStarted, MatchOver,
+    }
+
+    public struct BombInfo
+    {
+        public BombState State;
+        public int CarrierId;
+        public Vector3 Position;
+        public string Site;
+        public int PlantTick, ExplodeTick;
+        public int DefuserId, DefuseStartTick, DefuseEndTick;
+    }
+
+    public struct ProjectileInfo { public int Id; public GrenadeType Type; public Vector3 Position; }
+    public struct AreaInfo { public int Id; public GrenadeType Type; public Vector3 Center; public float Radius; public int StartTick, EndTick; }
+    public struct ItemInfo { public int Id; public WeaponId Weapon; public Vector3 Position; }
+
+    public struct ScoreEntry
+    {
+        public int Id; public Team Team; public bool Alive, IsBot;
+        public int Money;   // -1 when hidden (enemy)
+        public int Kills, Deaths, Assists, Mvps, Score, Damage, Headshots;
+    }
+
+    public struct RoundResult { public Team Winner; public RoundEndReason Reason; }
+
+    public struct MatchHeader
+    {
+        public GamePhase Phase;
+        public int PhaseEndTick;
+        public int BuyEndTick;
+    }
+
+    public struct GameEvent
+    {
+        public GameEventType Type;
+        public int A, B;
+        public Vector3 Position;
+        public string Text;
     }
 
     public enum Delivery : byte { Unreliable = 0, ReliableOrdered = 1, Sequenced = 2 }
@@ -27,11 +80,13 @@ namespace Vexa.Core.Net
         public Vector3 Position, Velocity;
         public float Yaw, Pitch, DuckAmount;
         public WeaponId Weapon;
-        public short Health;
+        public short Health, Armor;
+        public bool HasC4, Planting, Defusing, HasKit, Helmet;
+        public GrenadeType Grenade;
     }
 
     public struct HitEvent { public int Attacker, Victim; public HitGroup Group; public Vector3 Point; public int Damage; public int VictimHealth; }
-    public struct KillEvent { public int Killer, Victim; public WeaponId Weapon; public bool Headshot, Wallbang; }
+    public struct KillEvent { public int Killer, Victim; public WeaponId Weapon; public bool Headshot, Wallbang, ThroughSmoke, AttackerBlind; public GrenadeType Grenade; }
 
     /// <summary>Wire encoding for every message. Shared by client and server.</summary>
     public static class Protocol
@@ -72,6 +127,10 @@ namespace Vexa.Core.Net
             w.Byte(s.Zoom); w.Byte(s.ZoomResume); w.Float(s.ZoomResumeTime);
             w.Byte(s.BurstLeft); w.Float(s.NextBurstTime); w.Float(s.SilencerEndTime); w.Float(s.PrimeStartTime); w.Float(s.InspectEndTime);
             w.UShort(s.ShotCounter);
+            w.Byte(s.NadeHE); w.Byte(s.NadeFlash); w.Byte(s.NadeSmoke); w.Byte(s.NadeFire); w.Byte(s.NadeDecoy);
+            w.Byte((byte)s.ActiveGrenade); w.Float(s.PinTime); w.Float(s.ThrowStrength); w.Float(s.SwitchBackTime);
+            w.Byte((byte)((s.HasC4 ? 1 : 0) | (s.HasKit ? 2 : 0) | (s.Planting ? 4 : 0) | (s.Defusing ? 8 : 0) | (s.DropHeld ? 16 : 0) | (s.UseHeld ? 32 : 0)));
+            w.Float(s.PlantStartTime); w.Float(s.FlashEndTime); w.Float(s.FlashFullEndTime);
         }
 
         public static PlayerState ReadState(NetReader r)
@@ -91,6 +150,11 @@ namespace Vexa.Core.Net
             s.Zoom = r.Byte(); s.ZoomResume = r.Byte(); s.ZoomResumeTime = r.Float();
             s.BurstLeft = r.Byte(); s.NextBurstTime = r.Float(); s.SilencerEndTime = r.Float(); s.PrimeStartTime = r.Float(); s.InspectEndTime = r.Float();
             s.ShotCounter = r.UShort();
+            s.NadeHE = r.Byte(); s.NadeFlash = r.Byte(); s.NadeSmoke = r.Byte(); s.NadeFire = r.Byte(); s.NadeDecoy = r.Byte();
+            s.ActiveGrenade = (GrenadeType)r.Byte(); s.PinTime = r.Float(); s.ThrowStrength = r.Float(); s.SwitchBackTime = r.Float();
+            byte h = r.Byte();
+            s.HasC4 = (h & 1) != 0; s.HasKit = (h & 2) != 0; s.Planting = (h & 4) != 0; s.Defusing = (h & 8) != 0; s.DropHeld = (h & 16) != 0; s.UseHeld = (h & 32) != 0;
+            s.PlantStartTime = r.Float(); s.FlashEndTime = r.Float(); s.FlashFullEndTime = r.Float();
             return s;
         }
 
@@ -101,9 +165,11 @@ namespace Vexa.Core.Net
             w.Vec3(s.Position); w.Vec3(s.Velocity);
             w.UShort(VMath.QuantizeYaw(s.Yaw)); w.Short(VMath.QuantizePitch(s.Pitch));
             w.Byte((byte)(VMath.Clamp01(s.DuckAmount) * 255f));
-            var slot = s.GetSlot(s.Active);
-            w.Byte((byte)(slot.IsEmpty ? WeaponId.Knife : slot.Id));
+            w.Byte((byte)s.VisibleWeapon);
             w.Short(s.Health);
+            w.Byte((byte)((s.HasC4 ? 1 : 0) | (s.Planting ? 2 : 0) | (s.Defusing ? 4 : 0) | (s.HasKit ? 8 : 0) | (s.Helmet ? 16 : 0)));
+            w.Short(s.Armor);
+            w.Byte((byte)s.ActiveGrenade);
         }
 
         public static RemoteState ReadRemote(NetReader r)
@@ -116,6 +182,10 @@ namespace Vexa.Core.Net
             o.DuckAmount = r.Byte() / 255f;
             o.Weapon = (WeaponId)r.Byte();
             o.Health = r.Short();
+            byte g = r.Byte();
+            o.HasC4 = (g & 1) != 0; o.Planting = (g & 2) != 0; o.Defusing = (g & 4) != 0; o.HasKit = (g & 8) != 0; o.Helmet = (g & 16) != 0;
+            o.Armor = r.Short();
+            o.Grenade = (GrenadeType)r.Byte();
             return o;
         }
 
@@ -129,5 +199,40 @@ namespace Vexa.Core.Net
             ShooterId = r.Byte(), Weapon = (WeaponId)r.Byte(), Origin = r.Vec3(), Yaw = r.Float(), Pitch = r.Float(),
             Inaccuracy = r.Float(), Spread = r.Float(), Seed = r.UInt(), Pellets = r.Byte(), Flags = (ShotFlags)r.Byte(),
         };
+
+        public static void WriteHeader(NetWriter w, in MatchHeader h) { w.Byte((byte)h.Phase); w.Int(h.PhaseEndTick); w.Int(h.BuyEndTick); }
+        public static MatchHeader ReadHeader(NetReader r) => new MatchHeader { Phase = (GamePhase)r.Byte(), PhaseEndTick = r.Int(), BuyEndTick = r.Int() };
+
+        public static void WriteBomb(NetWriter w, in BombInfo b)
+        {
+            w.Byte((byte)b.State); w.Byte((byte)b.CarrierId); w.Vec3(b.Position); w.String(b.Site ?? "");
+            w.Int(b.PlantTick); w.Int(b.ExplodeTick); w.Byte((byte)b.DefuserId); w.Int(b.DefuseStartTick); w.Int(b.DefuseEndTick);
+        }
+        public static BombInfo ReadBomb(NetReader r) => new BombInfo
+        {
+            State = (BombState)r.Byte(), CarrierId = r.Byte(), Position = r.Vec3(), Site = r.String(),
+            PlantTick = r.Int(), ExplodeTick = r.Int(), DefuserId = r.Byte(), DefuseStartTick = r.Int(), DefuseEndTick = r.Int(),
+        };
+
+        public static void WriteArea(NetWriter w, in AreaInfo a) { w.UShort((ushort)a.Id); w.Byte((byte)a.Type); w.Vec3(a.Center); w.Float(a.Radius); w.Int(a.StartTick); w.Int(a.EndTick); }
+        public static AreaInfo ReadArea(NetReader r) => new AreaInfo { Id = r.UShort(), Type = (GrenadeType)r.Byte(), Center = r.Vec3(), Radius = r.Float(), StartTick = r.Int(), EndTick = r.Int() };
+
+        public static void WriteEvent(NetWriter w, in GameEvent e) { w.Byte((byte)Msg.Event); w.Byte((byte)e.Type); w.Int(e.A); w.Int(e.B); w.Vec3(e.Position); w.String(e.Text ?? ""); }
+        public static GameEvent ReadEvent(NetReader r) => new GameEvent { Type = (GameEventType)r.Byte(), A = r.Int(), B = r.Int(), Position = r.Vec3(), Text = r.String() };
+
+        public static void WriteScore(NetWriter w, in ScoreEntry e)
+        {
+            w.Byte((byte)e.Id); w.Byte((byte)e.Team); w.Byte((byte)((e.Alive ? 1 : 0) | (e.IsBot ? 2 : 0)));
+            w.Int(e.Money); w.Short((short)e.Kills); w.Short((short)e.Deaths); w.Short((short)e.Assists); w.Short((short)e.Mvps);
+            w.Short((short)e.Score); w.Int(e.Damage); w.Short((short)e.Headshots);
+        }
+        public static ScoreEntry ReadScore(NetReader r)
+        {
+            var e = new ScoreEntry { Id = r.Byte(), Team = (Team)r.Byte() };
+            byte f = r.Byte(); e.Alive = (f & 1) != 0; e.IsBot = (f & 2) != 0;
+            e.Money = r.Int(); e.Kills = r.Short(); e.Deaths = r.Short(); e.Assists = r.Short(); e.Mvps = r.Short();
+            e.Score = r.Short(); e.Damage = r.Int(); e.Headshots = r.Short();
+            return e;
+        }
     }
 }

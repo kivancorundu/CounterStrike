@@ -16,11 +16,13 @@ namespace Vexa.Core
         Galil, Famas, Ak47, M4a4, M4a1s, Sg553, Aug, Ssg08, Awp, G3sg1, Scar20,
         // melee / misc
         Knife, Taser,
+        // pseudo weapons for the grenade and bomb slots (movement speed, deploy time, third-person model)
+        Grenade, C4,
         Count
     }
 
     public enum WeaponSlotKind : byte { None = 0, Primary = 1, Secondary = 2, Melee = 3, Grenade = 4, Bomb = 5 }
-    public enum WeaponCategory : byte { Pistol, Smg, Shotgun, MachineGun, Rifle, Sniper, Melee, Taser }
+    public enum WeaponCategory : byte { Pistol, Smg, Shotgun, MachineGun, Rifle, Sniper, Melee, Taser, Grenade, Bomb }
 
     public struct Inaccuracy
     {
@@ -72,7 +74,7 @@ namespace Vexa.Core
         public Inaccuracy Inacc;
         public RecoilParams Recoil;
 
-        public bool IsGun => Category != WeaponCategory.Melee && Category != WeaponCategory.Taser;
+        public bool IsGun => Category <= WeaponCategory.Sniper;
         public float MoveSpeed => MoveSpeedHU * VMath.HU;
         public float ScopedSpeed => (ScopedSpeedHU > 0 ? ScopedSpeedHU : MoveSpeedHU) * VMath.HU;
         public float Range => RangeHU * VMath.HU;
@@ -173,6 +175,8 @@ namespace Vexa.Core
             Add(new WeaponDef { Id = WeaponId.Knife, Name = "Bıçak", Slot = WeaponSlotKind.Melee, Category = WeaponCategory.Melee, Price = 0, Damage = 40, ArmorPen = 0.85f, CycleTime = 0.4f, Automatic = true, MoveSpeedHU = 250, KillReward = 1500, DeployTime = 0.6f, RangeHU = 64 });
             Add(new WeaponDef { Id = WeaponId.Taser, Name = "Zeus x27", Slot = WeaponSlotKind.Melee, Category = WeaponCategory.Taser, Price = 200, Damage = 500, ArmorPen = 1f, RangeHU = 183, CycleTime = 2f, Automatic = false, ClipSize = 1, MoveSpeedHU = 220, KillReward = 0, Penetration = 0, DeployTime = 1f,
                 Inacc = I(2, 2, 6, 30, 0, 0, 0.3f, 1), Recoil = R(1, 1, 0, 1, 1, 0) });
+            Add(new WeaponDef { Id = WeaponId.Grenade, Name = "Bomba", Slot = WeaponSlotKind.Grenade, Category = WeaponCategory.Grenade, MoveSpeedHU = 245, DeployTime = 0.6f, CycleTime = 0.5f, Automatic = false, KillReward = 300 });
+            Add(new WeaponDef { Id = WeaponId.C4, Name = "C4", Slot = WeaponSlotKind.Bomb, Category = WeaponCategory.Bomb, MoveSpeedHU = 250, DeployTime = 0.8f, CycleTime = 1f, Automatic = true, KillReward = 0 });
         }
     }
 }

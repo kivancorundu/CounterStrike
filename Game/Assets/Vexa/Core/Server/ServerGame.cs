@@ -9,8 +9,10 @@ namespace Vexa.Core.Server
     /// Authoritative game server (Source-style): clients send user commands, the server simulates them
     /// with the shared <see cref="PlayerSimulation"/>, resolves shots with lag compensation and
     /// sends snapshots. Never trusts client positions, hits or fire rate.
+    /// Split into partial files: networking + simulation (this file), match rules (ServerMatch.cs),
+    /// grenades (ServerGrenades.cs).
     /// </summary>
-    public sealed class ServerGame : IShotSink
+    public sealed partial class ServerGame : IShotSink, ISimEvents
     {
         public sealed class Player
         {
@@ -23,12 +25,24 @@ namespace Vexa.Core.Server
             public int LastCmdTick = -1;
             public int Budget;
             public float LastInterpTick;
+            public Buttons LastButtons;
             public double RespawnAt = -1;
             public ServerBot Bot;
-            public int Kills, Deaths;
             public int CmdsProcessed, ShotsFired, RejectedCmds;
             internal float TimeCredit = -1;            // ticks of command time the player may still consume
             public bool IsBot => Peer < 0;
+            public Team PreferredTeam;
+
+            // match stats
+            public int Money;
+            public int Kills, Deaths, Assists, Mvps, Score, Damage, Headshots;
+            public int RoundKills, RoundDamage;
+            public readonly Dictionary<int, int> DamageTaken = new Dictionary<int, int>(); // attacker id -> damage this round
+            public double SpawnTime;
+            public List<ItemId> DmLoadout = new List<ItemId>();
+
+            /// <summary>Current time on this player's own command timeline.</summary>
+            public float PlayerTime(float dt) => LastCmdTick * dt;
         }
 
         public readonly int TickRate;
@@ -36,8 +50,7 @@ namespace Vexa.Core.Server
         public int Tick { get; private set; }
         public readonly MapData Map;
         public readonly CollisionWorld World;
-        public bool FriendlyFire = false;
-        public float RespawnDelay = 3f;
+        public readonly MatchConfig Config;
         public int MaxRewindTicks;
         public const int MaxCmdBudget = 10;   // max commands per player per tick burst (anti speed-hack)
         public const float MaxTimeCreditSeconds = 0.5f; // command clock may never get more than this ahead of real time
@@ -47,47 +60,58 @@ namespace Vexa.Core.Server
         private readonly Dictionary<int, Player> _byId = new Dictionary<int, Player>();
         private readonly List<Player> _players = new List<Player>();
         private readonly PoseHistory _history = new PoseHistory();
-        private readonly NetWriter _w = new NetWriter(2048);
+        private readonly NetWriter _w = new NetWriter(4096);
         private readonly NetReader _r = new NetReader();
         private readonly SimContext _ctx;
-        private readonly Random _rng = new Random(1234);
+        private readonly Random _rng;
         private Player _currentShooter;
         private double _acc;
         private int _nextId = 1;
 
         public IReadOnlyList<Player> Players => _players;
+        private AI.NavGrid _nav;
+        public AI.NavGrid Nav => _nav ?? (_nav = AI.NavGrid.Build(World));
         public event Action<string> Log;
         public event Action<KillEvent> OnKill;
         public event Action<HitEvent> OnHit;
 
-        public ServerGame(ITransport net, MapData map, int tickRate = 64)
+        public ServerGame(ITransport net, MapData map, int tickRate = 64, MatchConfig config = null, int seed = 1234)
         {
             _net = net;
             Map = map;
             World = map.BuildCollision();
             TickRate = tickRate;
             Dt = 1f / tickRate;
+            Config = config ?? MatchConfig.Deathmatch();
+            _rng = new Random(seed);
             MaxRewindTicks = (int)(0.25f * tickRate);
-            _ctx = new SimContext { World = World, Dt = Dt, Shots = this };
+            _ctx = new SimContext { World = World, Dt = Dt, Shots = this, Events = this, Map = map };
             _net.Connected += OnConnected;
             _net.Disconnected += OnDisconnected;
             _net.Received += OnReceived;
+            InitMatch();
         }
 
-        public Player GetPlayer(int id) => _byId.TryGetValue(id, out var p) ? p : null;
+        public Player GetPlayer(int id) => id >= 0 && _byId.TryGetValue(id, out var p) ? p : null;
+        void Info(string m) => Log?.Invoke(m);
 
-        public Player AddBot(string name, Team team = Team.None)
+        public Player AddBot(string name, Team team = Team.None, bool brain = true)
         {
-            var p = NewPlayer(-1, name, team);
-            p.Bot = new ServerBot(this, p, _rng.Next());
+            var p = NewPlayer(-1, name, team == Team.None ? AutoTeam() : team);
+            if (brain) p.Bot = new ServerBot(this, p, _rng.Next());
             p.Ready = true;
+            OnPlayerJoined(p);
             return p;
         }
 
         private Player NewPlayer(int peer, string name, Team team)
         {
             var p = new Player { Id = _nextId++, Peer = peer, Name = name };
-            p.State = SpawnState(team);
+            if (Config.Mode == GameMode.Deathmatch) team = Team.None;
+            p.State = PlayerState.Spawn(team == Team.None ? Team.T : team, Vector3.Zero, 0);
+            p.State.Team = team;
+            p.State.Alive = false;
+            p.Money = Config.StartMoney;
             _players.Add(p);
             _byId[p.Id] = p;
             if (peer >= 0) _byPeer[peer] = p;
@@ -95,16 +119,24 @@ namespace Vexa.Core.Server
             return p;
         }
 
+        public void RemovePlayer(Player p)
+        {
+            if (p.State.HasC4) DropBomb(p);
+            _byId.Remove(p.Id); _players.Remove(p); _history.Remove(p.Id);
+            if (p.Peer >= 0) _byPeer.Remove(p.Peer);
+            _w.Reset(); _w.Byte((byte)Msg.PlayerLeft); _w.Byte((byte)p.Id);
+            SendAll(Delivery.ReliableOrdered);
+        }
+
         // ---------------- networking ----------------
-        private void OnConnected(int peer) { Log?.Invoke($"peer {peer} connected"); }
+        private void OnConnected(int peer) { Info($"peer {peer} connected"); }
 
         private void OnDisconnected(int peer)
         {
             if (!_byPeer.TryGetValue(peer, out var p)) return;
-            _byPeer.Remove(peer); _byId.Remove(p.Id); _players.Remove(p); _history.Remove(p.Id);
-            _w.Reset(); _w.Byte((byte)Msg.PlayerLeft); _w.Byte((byte)p.Id);
-            SendAll(Delivery.ReliableOrdered);
-            Log?.Invoke($"{p.Name} left");
+            RemovePlayer(p);
+            Info($"{p.Name} left");
+            OnPlayerLeft(p);
         }
 
         private void OnReceived(int peer, byte[] data, int len)
@@ -121,12 +153,16 @@ namespace Vexa.Core.Server
                         if (ver != Protocol.Version || p != null) { _net.Disconnect(peer); return; }
                         if (string.IsNullOrWhiteSpace(name)) name = "Player";
                         if (name.Length > 24) name = name.Substring(0, 24);
-                        p = NewPlayer(peer, name, Team.None);
+                        var team = AutoTeam();
+                        MakeRoomOnTeam(team);
+                        p = NewPlayer(peer, name, team);
                         p.Ready = true;
                         _w.Reset(); _w.Byte((byte)Msg.Welcome); _w.Byte((byte)p.Id); _w.UShort((ushort)TickRate); _w.Int(Tick); _w.String(Map.Name);
                         _net.Send(peer, _w.Data, _w.Length, Delivery.ReliableOrdered);
                         foreach (var o in _players) if (o != p) SendPlayerInfo(peer, o);
-                        Log?.Invoke($"{name} joined as #{p.Id}");
+                        Info($"{name} joined as #{p.Id} ({team})");
+                        OnPlayerJoined(p);
+                        SendMatchState(p);
                         break;
                     }
                 case Msg.Input:
@@ -146,27 +182,28 @@ namespace Vexa.Core.Server
                         break;
                     }
                 case Msg.Buy:
-                    {
-                        if (p == null || !p.State.Alive) return;
-                        var id = (WeaponId)_r.Byte();
-                        if (id <= WeaponId.None || id >= WeaponId.Count || id == WeaponId.Knife) return;
-                        // milestone 1: free loadouts (economy rules come with the competitive mode)
-                        WeaponLogic.Give(ref p.State, id, p.LastCmdTick * Dt);
-                        break;
-                    }
+                    if (p != null) TryBuy(p, (ItemId)_r.Byte());
+                    break;
+                case Msg.TeamSelect:
+                    if (p != null) RequestTeam(p, (Team)_r.Byte());
+                    break;
             }
         }
 
-        private void SendAll(Delivery d)
+        internal void SendAll(Delivery d)
         {
             foreach (var p in _players) if (p.Peer >= 0) _net.Send(p.Peer, _w.Data, _w.Length, d);
         }
-        private void SendAllExcept(Player except, Delivery d)
+        internal void SendAllExcept(Player except, Delivery d)
         {
             foreach (var p in _players) if (p.Peer >= 0 && p != except) _net.Send(p.Peer, _w.Data, _w.Length, d);
         }
+        internal void SendTo(Player p, Delivery d)
+        {
+            if (p.Peer >= 0) _net.Send(p.Peer, _w.Data, _w.Length, d);
+        }
 
-        private void BroadcastPlayerInfo(Player p)
+        internal void BroadcastPlayerInfo(Player p)
         {
             WritePlayerInfo(p);
             SendAll(Delivery.ReliableOrdered);
@@ -179,6 +216,17 @@ namespace Vexa.Core.Server
         private void WritePlayerInfo(Player p)
         {
             _w.Reset(); _w.Byte((byte)Msg.PlayerInfo); _w.Byte((byte)p.Id); _w.Byte((byte)p.State.Team); _w.String(p.Name); _w.Bool(p.IsBot);
+        }
+
+        internal void Broadcast(in GameEvent e)
+        {
+            _w.Reset(); Protocol.WriteEvent(_w, e);
+            SendAll(Delivery.ReliableOrdered);
+        }
+        internal void SendEvent(Player p, in GameEvent e)
+        {
+            _w.Reset(); Protocol.WriteEvent(_w, e);
+            SendTo(p, Delivery.ReliableOrdered);
         }
 
         // ---------------- simulation ----------------
@@ -194,9 +242,8 @@ namespace Vexa.Core.Server
         {
             _net.Poll();
             Tick++;
-            double now = Tick * (double)Dt;
 
-            foreach (var p in _players)
+            foreach (var p in _players.ToArray())
             {
                 if (!p.Ready) continue;
                 p.Budget = Math.Min(p.Budget + 1, MaxCmdBudget);
@@ -226,24 +273,11 @@ namespace Vexa.Core.Server
                     Simulate(p, cmd);
                     p.Budget--;
                 }
-                // anything past the budget is dropped (client running too fast)
                 p.Pending.RemoveRange(0, Math.Max(used, p.Pending.Count > 32 ? p.Pending.Count - 32 : 0));
             }
 
-            // deaths caused by the player's own simulation (falling)
-            foreach (var p in _players)
-                if (!p.State.Alive && p.RespawnAt < 0) { p.RespawnAt = now + RespawnDelay; p.Deaths++; }
-
-            // respawns
-            foreach (var p in _players)
-                if (!p.State.Alive && p.RespawnAt >= 0 && now >= p.RespawnAt)
-                {
-                    var team = p.State.Team;
-                    var keepPrimary = p.State.Primary;
-                    p.State = SpawnState(team);
-                    p.RespawnAt = -1;
-                    if (!keepPrimary.IsEmpty) WeaponLogic.Give(ref p.State, keepPrimary.Id, p.LastCmdTick * Dt);
-                }
+            StepGrenades();
+            StepMatch();
 
             foreach (var p in _players) _history.Record(Tick, p.Id, HitPose.From(p.State));
             SendSnapshots();
@@ -251,34 +285,42 @@ namespace Vexa.Core.Server
 
         private void Simulate(Player p, PlayerInput cmd)
         {
+            bool wasAlive = p.State.Alive;
             _ctx.PlayerId = p.Id;
-            _ctx.Frozen = false;
+            _ctx.Frozen = Phase == GamePhase.Freeze || Phase == GamePhase.MatchOver;
+            _ctx.PlantAllowed = Phase == GamePhase.Live && Bomb.State == BombState.Carried;
             _currentShooter = p;
             p.LastInterpTick = cmd.InterpTick;
             PlayerSimulation.Step(ref p.State, cmd, _ctx);
             p.LastCmdTick = cmd.Tick;
             p.CmdsProcessed++;
             _currentShooter = null;
+            var prev = p.LastButtons;
+            p.LastButtons = cmd.Buttons;
+            if (wasAlive && !p.State.Alive) OnDeath(p, null, null, false, false); // fell to death
+            if (p.State.Alive)
+            {
+                if (cmd.Has(Buttons.Drop) && (prev & Buttons.Drop) == 0) DropActive(p);
+                if (cmd.Has(Buttons.Use) && (prev & Buttons.Use) == 0) UsePickup(p);
+            }
         }
 
-        private PlayerState SpawnState(Team team)
+        public void OnThrow(in GrenadeThrow t)
         {
-            var spawns = Map.Spawns;
-            SpawnPoint best = default;
-            float bestScore = float.MinValue;
-            for (int k = 0; k < Math.Max(1, spawns.Count); k++)
-            {
-                if (spawns.Count == 0) break;
-                var sp = spawns[_rng.Next(spawns.Count)];
-                if (team != Team.None && sp.Team != Team.None && sp.Team != team) continue;
-                float dmin = 999f;
-                foreach (var o in _players) if (o.State.Alive) dmin = MathF.Min(dmin, Vector3.Distance(o.State.Position, sp.Position));
-                if (dmin > bestScore) { bestScore = dmin; best = sp; }
-            }
-            var st = PlayerState.Spawn(team == Team.None ? Team.T : team, best.Position, best.Yaw);
-            st.Team = team;
-            st.Armor = 100; st.Helmet = true;
-            return st;
+            var p = _currentShooter;
+            if (p == null) return;
+            SpawnProjectile(p, t);
+        }
+
+        private void BotHearShot(Player shooter, in ShotInfo shot)
+        {
+            ServerBot.HearNoise(this, shooter, shot.Origin, (shot.Flags & ShotFlags.Silenced) != 0 ? 12f : 45f);
+        }
+
+        public void OnPlanted(int playerId, Vector3 position, string site)
+        {
+            var p = GetPlayer(playerId);
+            if (p != null) PlantBomb(p, position, site);
         }
 
         // ---------------- shots (lag compensated) ----------------
@@ -293,6 +335,7 @@ namespace Vexa.Core.Server
             // let everyone else see / hear the shot
             _w.Reset(); _w.Byte((byte)Msg.ShotFx); Protocol.WriteShot(_w, shot);
             SendAllExcept(shooter, Delivery.Unreliable);
+            BotHearShot(shooter, shot);
 
             if ((shot.Flags & ShotFlags.Melee) != 0) { ResolveMelee(shooter, shot, def, rewind); return; }
             if ((shot.Flags & ShotFlags.Taser) != 0)
@@ -302,6 +345,7 @@ namespace Vexa.Core.Server
                     ApplyDamage(shooter, victim, def, g, 500, 0, false, shot.Origin + dir * t);
                 return;
             }
+            bool smokeShot = SegmentInSmoke(shot.Origin, VMath.Forward(shot.Yaw, shot.Pitch), 30f);
             var hitThisPellet = new HashSet<Player>();
             for (int i = 0; i < shot.Pellets; i++)
             {
@@ -321,7 +365,7 @@ namespace Vexa.Core.Server
                         hitThisPellet.Add(victim);
                         float dist = traveled + t;
                         var dmg = DamageModel.Compute(def, group, dist, power, victim.State.Armor, victim.State.Helmet);
-                        ApplyDamage(shooter, victim, def, group, dmg.Health, dmg.Armor, wall, o + dir * t);
+                        ApplyDamage(shooter, victim, def, group, dmg.Health, dmg.Armor, wall, o + dir * t, smokeShot);
                         o += dir * (t + 0.01f); traveled = dist + 0.01f; power *= 0.6f;
                         continue;
                     }
@@ -375,35 +419,56 @@ namespace Vexa.Core.Server
             }
         }
 
-        private void ApplyDamage(Player attacker, Player victim, WeaponDef def, HitGroup group, int health, int armor, bool wallbang, Vector3 point)
+        internal void ApplyDamage(Player attacker, Player victim, WeaponDef def, HitGroup group, int health, int armor, bool wallbang, Vector3 point, bool throughSmoke = false)
         {
-            if (!victim.State.Alive) return;
-            if (!FriendlyFire && attacker != victim && attacker.State.Team != Team.None && attacker.State.Team == victim.State.Team) return;
+            if (!victim.State.Alive || health <= 0) return;
+            if (Phase == GamePhase.MatchOver) return;
+            if (Config.Mode == GameMode.Deathmatch && Tick * (double)Dt - victim.SpawnTime < 1.5) return; // spawn protection
+            bool teamHit = attacker != null && attacker != victim && victim.State.Team != Team.None && attacker.State.Team == victim.State.Team;
+            if (teamHit)
+            {
+                if (!Config.FriendlyFire) return;
+                health = Math.Max(1, (int)(health * (def != null && def.Category == WeaponCategory.Grenade ? 0.85f : 0.33f)));
+            }
+            int real = Math.Min(health, victim.State.Health);
             victim.State.Health -= (short)health;
             victim.State.Armor = (short)Math.Max(0, victim.State.Armor - armor);
             victim.State.VelocityModifier = MathF.Min(victim.State.VelocityModifier, group == HitGroup.LeftLeg || group == HitGroup.RightLeg ? 0.55f : 0.45f);
             if (victim.State.Health < 0) victim.State.Health = 0;
-            var he = new HitEvent { Attacker = attacker.Id, Victim = victim.Id, Group = group, Point = point, Damage = health, VictimHealth = victim.State.Health };
+            if (attacker != null && attacker != victim)
+            {
+                victim.DamageTaken.TryGetValue(attacker.Id, out int prev);
+                victim.DamageTaken[attacker.Id] = prev + real;
+                if (!teamHit) { attacker.Damage += real; attacker.RoundDamage += real; }
+            }
+            var he = new HitEvent { Attacker = attacker?.Id ?? 0, Victim = victim.Id, Group = group, Point = point, Damage = health, VictimHealth = victim.State.Health };
             _w.Reset(); _w.Byte((byte)Msg.Hit); _w.Byte((byte)he.Attacker); _w.Byte((byte)he.Victim); _w.Byte((byte)he.Group); _w.Vec3(point); _w.Short((short)health); _w.Short(victim.State.Health);
             SendAll(Delivery.ReliableOrdered);
             OnHit?.Invoke(he);
-            if (victim.State.Health <= 0)
-            {
-                victim.State.Alive = false;
-                victim.Deaths++;
-                victim.RespawnAt = Tick * (double)Dt + RespawnDelay;
-                if (attacker != victim) attacker.Kills++;
-                var ke = new KillEvent { Killer = attacker.Id, Victim = victim.Id, Weapon = def.Id, Headshot = group == HitGroup.Head, Wallbang = wallbang };
-                _w.Reset(); _w.Byte((byte)Msg.Kill); _w.Byte((byte)ke.Killer); _w.Byte((byte)ke.Victim); _w.Byte((byte)ke.Weapon); _w.Bool(ke.Headshot); _w.Bool(ke.Wallbang);
-                SendAll(Delivery.ReliableOrdered);
-                OnKill?.Invoke(ke);
-                Log?.Invoke($"{attacker.Name} [{def.Name}{(ke.Headshot ? " HS" : "")}{(wallbang ? " WB" : "")}] {victim.Name}");
-            }
+            victim.Bot?.OnDamaged(attacker);
+            if (victim.State.Health <= 0) OnDeath(victim, attacker, def, group == HitGroup.Head, wallbang, throughSmoke);
+        }
+
+        private void OnDeath(Player victim, Player attacker, WeaponDef def, bool headshot, bool wallbang, bool throughSmoke = false)
+        {
+            victim.State.Alive = false;
+            victim.State.Health = 0;
+            victim.State.Planting = false; victim.State.Defusing = false;
+            var weapon = def?.Id ?? WeaponId.None;
+            var ke = new KillEvent { Killer = attacker?.Id ?? 0, Victim = victim.Id, Weapon = weapon, Headshot = headshot, Wallbang = wallbang, ThroughSmoke = throughSmoke, AttackerBlind = attacker != null && attacker.State.IsBlind(attacker.PlayerTime(Dt)), Grenade = _killGrenade };
+            _w.Reset(); _w.Byte((byte)Msg.Kill); _w.Byte((byte)ke.Killer); _w.Byte((byte)ke.Victim); _w.Byte((byte)ke.Weapon);
+            _w.Byte((byte)((ke.Headshot ? 1 : 0) | (ke.Wallbang ? 2 : 0) | (ke.ThroughSmoke ? 4 : 0) | (ke.AttackerBlind ? 8 : 0)));
+            _w.Byte((byte)ke.Grenade);
+            SendAll(Delivery.ReliableOrdered);
+            OnKill?.Invoke(ke);
+            Info($"{attacker?.Name ?? "world"} [{def?.Name ?? "-"}{(headshot ? " HS" : "")}{(wallbang ? " WB" : "")}] {victim.Name}");
+            OnKilled(victim, attacker, def, headshot);
         }
 
         // ---------------- snapshots ----------------
         private void SendSnapshots()
         {
+            var header = new MatchHeader { Phase = Phase, PhaseEndTick = PhaseEndTick, BuyEndTick = BuyEndTick };
             foreach (var p in _players)
             {
                 if (p.Peer < 0 || !p.Ready) continue;
@@ -414,7 +479,19 @@ namespace Vexa.Core.Server
                 Protocol.WriteState(_w, p.State);
                 _w.Byte((byte)(_players.Count - 1));
                 foreach (var o in _players)
-                    if (o != p) Protocol.WriteRemote(_w, o.Id, o.State);
+                {
+                    if (o == p) continue;
+                    var st = o.State;
+                    // don't leak who carries the bomb to the enemy team
+                    if (st.Team != p.State.Team && Config.Mode != GameMode.Practice) st.HasC4 = false;
+                    Protocol.WriteRemote(_w, o.Id, st);
+                }
+                Protocol.WriteHeader(_w, header);
+                var bomb = Bomb;
+                if (bomb.State == BombState.Carried && GetPlayer(bomb.CarrierId)?.State.Team != p.State.Team) { bomb.CarrierId = 0; bomb.Position = Vector3.Zero; }
+                Protocol.WriteBomb(_w, bomb);
+                WriteGrenadeSnapshot(_w);
+                WriteItemsSnapshot(_w);
                 _net.Send(p.Peer, _w.Data, _w.Length, Delivery.Sequenced);
             }
         }

@@ -11,5 +11,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../Game/Assets/Vexa/Core/**/*.cs" />
+    <InternalsVisibleTo Include="Vexa.Tests" />
   </ItemGroup>
 </Project>
