@@ -90,7 +90,7 @@ namespace Vexa.Core
         /// <summary>The CS2-style buy menu columns. Entries with two ids are (T, CT) variants.</summary>
         public static readonly (string title, (ItemId t, ItemId ct)[] items)[] BuyMenu =
         {
-            ("EKİPMAN", new[] { (ItemId.Vest, ItemId.Vest), (ItemId.VestHelmet, ItemId.VestHelmet), (W(WeaponId.Taser), W(WeaponId.Taser)), (ItemId.None, ItemId.DefuseKit) }),
+            ("EKİPMAN", new[] { (ItemId.Vest, ItemId.Vest), (ItemId.VestHelmet, ItemId.VestHelmet), (ItemId.None, ItemId.DefuseKit) }),
             ("TABANCALAR", new[] { (W(WeaponId.Glock), W(WeaponId.Usp)), (W(WeaponId.Elite), W(WeaponId.Elite)), (W(WeaponId.P250), W(WeaponId.P250)), (W(WeaponId.Tec9), W(WeaponId.FiveSeven)), (W(WeaponId.Cz75), W(WeaponId.Cz75)), (W(WeaponId.Deagle), W(WeaponId.Deagle)), (W(WeaponId.R8), W(WeaponId.R8)) }),
             ("HAFİF MAKİNELİ", new[] { (W(WeaponId.Mac10), W(WeaponId.Mp9)), (W(WeaponId.Mp7), W(WeaponId.Mp7)), (W(WeaponId.Mp5sd), W(WeaponId.Mp5sd)), (W(WeaponId.Ump45), W(WeaponId.Ump45)), (W(WeaponId.P90), W(WeaponId.P90)), (W(WeaponId.Bizon), W(WeaponId.Bizon)) }),
             ("AĞIR", new[] { (W(WeaponId.Nova), W(WeaponId.Nova)), (W(WeaponId.Xm1014), W(WeaponId.Xm1014)), (W(WeaponId.SawedOff), W(WeaponId.Mag7)), (W(WeaponId.M249), W(WeaponId.M249)), (W(WeaponId.Negev), W(WeaponId.Negev)) }),

@@ -6,9 +6,11 @@ using Vexa.Core;
 using Vexa.Core.Server;
 using Vexa.Net;
 
-// vexa-server --port 27015 --tick 64 --map training --bots 3
+// vexa-server --port 27015 --tick 64 --map kasaba --mode competitive --difficulty 0.5
+// modes: competitive (5v5 MR12, bots fill empty slots), casual, deathmatch, practice
 int port = 27015, tick = 64, bots = 0, maxPlayers = 12;
-string mapName = "training";
+string mapName = "training", modeName = "deathmatch";
+float difficulty = 0.5f;
 for (int i = 0; i < args.Length - 1; i++)
 {
     switch (args[i])
@@ -18,6 +20,8 @@ for (int i = 0; i < args.Length - 1; i++)
         case "--map": mapName = args[++i]; break;
         case "--bots": bots = int.Parse(args[++i]); break;
         case "--max-players": maxPlayers = int.Parse(args[++i]); break;
+        case "--mode": modeName = args[++i].ToLowerInvariant(); break;
+        case "--difficulty": difficulty = float.Parse(args[++i], System.Globalization.CultureInfo.InvariantCulture); break;
     }
 }
 if (tick != 64 && tick != 128) { Console.WriteLine("tick must be 64 or 128"); return 1; }
@@ -25,10 +29,20 @@ if (tick != 64 && tick != 128) { Console.WriteLine("tick must be 64 or 128"); re
 string mapPath = Path.Combine(AppContext.BaseDirectory, "Maps", mapName + ".vxmap");
 var map = MapData.Parse(File.ReadAllText(mapPath));
 using var transport = LiteNetTransport.StartServer(port, maxPlayers);
-var game = new ServerGame(transport, map, tick);
+MatchConfig config;
+switch (modeName)
+{
+    case "competitive": config = MatchConfig.Competitive(); break;
+    case "casual": config = MatchConfig.Casual(); break;
+    case "practice": config = MatchConfig.Practice(); break;
+    case "deathmatch": config = MatchConfig.Deathmatch(); break;
+    default: Console.WriteLine("unknown mode: " + modeName); return 1;
+}
+config.BotDifficulty = Math.Clamp(difficulty, 0f, 1f);
+var game = new ServerGame(transport, map, tick, config);
 game.Log += m => Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] {m}");
 for (int i = 0; i < bots; i++) game.AddBot("Bot " + (i + 1));
-Console.WriteLine($"VEXA dedicated server | map {map.Name} | {tick} tick | UDP {port} | {bots} bots");
+Console.WriteLine($"VEXA dedicated server | {config.Mode} | map {map.Name} | {tick} tick | UDP {port} | {bots} extra bots");
 
 bool running = true;
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; running = false; };

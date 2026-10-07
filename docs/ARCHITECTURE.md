@@ -27,7 +27,9 @@ Bu kod üç yerde **birebir aynı** şekilde çalışır:
 ```
 ┌──────────────── Unity (Vexa.Client) ────────────────┐
 │ InputSampler · LocalPlayerCamera · PlayerAvatar     │  sunum katmanı
-│ ShotEffects · VexaApp (geçici menü/HUD)             │
+│ ShotEffects · WorldVisuals · GameSession · VexaApp  │
+│ UI/ (UI Toolkit): UiRoot → menüler, HUD, radar,     │
+│     satın alma, skor tablosu, ayarlar               │
 └───────────────┬─────────────────────────────────────┘
                 │ PlayerInput / durum okuma / olaylar
 ┌───────────────▼──────────── Vexa.Core ──────────────┐
@@ -92,6 +94,16 @@ Bakış açıları sunucuyla bit-bit aynı olsun diye istemci, açıları önce 
   - istatistiksel aimbot tespiti
   - demo kayıtları
   - istemci bütünlük kontrolleri
+
+## Arayüz (UI Toolkit)
+
+Arayüz `Client/UI` altında tamamen C# ile kurulur. UXML/USS dosyası, sahne veya prefab gerekmez; `PanelSettings` çalışma anında oluşturulur (1920×1080 referans, ekrana göre ölçeklenir).
+
+- **`UiRoot`** hangi ekranın görüneceğine karar verir: ana menü → yükleme → oyun (HUD ve üstündeki satın alma, skor, duraklatma, maç sonu katmanları). Esc / B / Tab / M tuşlarını ve imleç kilidini o yönetir. Bir menü açıkken `GameSession.InputBlocked` ile oyun girdisi durur.
+- **Ekranlar yalnızca okur:** HUD her karede `ClientGame` durumunu (tahmin edilen oyuncu, maç başlığı, bomba, skorlar) okur ve olaylara (öldürme, isabet, raund sonu, oyun olayları) abone olur. Satın alma gibi eylemler `ClientGame.RequestBuy` / `SelectTeam` ile sunucuya gider; karar her zaman sunucunundur.
+- **Radar** her harita için otomatik üretilir: çarpışma dünyasından `NavGrid` kurulur, yürünebilir hücreler yüksekliğe göre gölgelenip dokuya çizilir.
+- **Tema** (`Theme`, `Fonts`, `U` yardımcıları) tek yerde. Renkler: zemin `#0A0D12`, vurgu `#D7FF3C`, saldırı `#F2A33A`, savunma `#5AB0FF`. Yazı tipleri: Barlow ve Barlow Condensed (OFL).
+- **Ayarlar** (`VexaSettings`) `PlayerPrefs`'te tutulur. Nişangah `VX-...` paylaşım koduna çevrilebilir.
 
 ## Harita hattı
 

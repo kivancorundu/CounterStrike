@@ -22,35 +22,83 @@ namespace Vexa.Client
         public ServerGame HostServer { get; private set; }
         public InputSampler Input { get; } = new InputSampler();
         public string Status = "";
-        public readonly List<string> KillFeed = new List<string>();
-        public float HitMarkerUntil, DamageFlashUntil;
+        public bool Failed;
+        public float HitMarkerUntil, HitMarkerKillUntil, DamageFlashUntil;
+        /// <summary>Set by the UI: true while a menu/overlay owns the mouse and keyboard.</summary>
+        public static bool InputBlocked;
+        public bool Ready => Client != null && Client.Welcomed && _mapRoot != null;
 
         private LiteNetTransport _clientNet, _serverNet;
         private GameObject _mapRoot;
         private readonly Dictionary<int, PlayerAvatar> _avatars = new Dictionary<int, PlayerAvatar>();
         private LocalPlayerCamera _camera;
         private ShotEffects _effects;
+        private WorldVisuals _world;
         private float _connectStarted;
 
-        public static GameSession Host(int port, int tickRate, int bots, string playerName, string map = "training")
+        /// <summary>Everything the play screen chooses for a locally hosted match.</summary>
+        public sealed class MatchSetup
+        {
+            public GameMode Mode = GameMode.Competitive;
+            public string Map = "kasaba";
+            public int Port = 27015;
+            public int TickRate = 64;
+            public int TeamSize = 5;           // competitive / casual: bots fill both teams to this size
+            public int DeathmatchBots = 7;
+            public float BotDifficulty = 0.5f;
+            public Team Side = Team.None;      // preferred side, None = auto
+            public string PlayerName = "Oyuncu";
+
+            public MatchConfig ToConfig()
+            {
+                MatchConfig c;
+                switch (Mode)
+                {
+                    case GameMode.Casual: c = MatchConfig.Casual(); break;
+                    case GameMode.Deathmatch: c = MatchConfig.Deathmatch(); break;
+                    case GameMode.Practice: c = MatchConfig.Practice(); break;
+                    default: c = MatchConfig.Competitive(); break;
+                }
+                if (c.HasRounds) c.TeamSize = Mathf.Clamp(TeamSize, 1, 5);
+                c.BotDifficulty = Mathf.Clamp01(BotDifficulty);
+                return c;
+            }
+        }
+
+        public MatchSetup Setup { get; private set; }
+        public string MapName { get; private set; } = "";
+        private bool _sideRequested;
+
+        public static GameSession Host(MatchSetup setup)
         {
             var s = Create();
+            s.Setup = setup;
+            s.MapName = setup.Map;
             try
             {
-                var mapData = MapLoader.Load(map);
-                s._serverNet = LiteNetTransport.StartServer(port);
-                s.HostServer = new ServerGame(s._serverNet, mapData, tickRate);
+                var mapData = MapLoader.Load(setup.Map);
+                var config = setup.ToConfig();
+                s._serverNet = LiteNetTransport.StartServer(setup.Port);
+                s.HostServer = new ServerGame(s._serverNet, mapData, setup.TickRate, config);
                 s.HostServer.Log += m => Debug.Log("[server] " + m);
-                for (int i = 0; i < bots; i++) s.HostServer.AddBot("Bot " + (i + 1));
-                s.Connect("127.0.0.1", port, playerName);
+                if (setup.Mode == GameMode.Deathmatch || setup.Mode == GameMode.Practice)
+                {
+                    int bots = setup.Mode == GameMode.Deathmatch ? setup.DeathmatchBots : 0;
+                    for (int i = 0; i < bots; i++) s.HostServer.AddBot(BotName(i));
+                }
+                s.Connect("127.0.0.1", setup.Port, setup.PlayerName);
             }
-            catch (Exception e) { s.Status = "Sunucu başlatılamadı: " + e.Message; Debug.LogException(e); }
+            catch (Exception e) { s.Status = "Sunucu başlatılamadı: " + e.Message; s.Failed = true; Debug.LogException(e); }
             return s;
         }
+
+        static readonly string[] DmBotNames = { "Kartal", "Poyraz", "Bozkurt", "Atlas", "Toprak", "Yıldırım", "Kaya", "Demir", "Fırtına", "Doruk", "Alaz", "Tuna", "Efe", "Baran", "Kuzey" };
+        static string BotName(int i) => DmBotNames[i % DmBotNames.Length] + (i >= DmBotNames.Length ? " " + (i / DmBotNames.Length + 1) : "");
 
         public static GameSession Join(string host, int port, string playerName)
         {
             var s = Create();
+            s.MapName = "";
             s.Connect(host, port, playerName);
             return s;
         }
@@ -62,7 +110,8 @@ namespace Vexa.Client
             var s = go.AddComponent<GameSession>();
             Current = s;
             s.Input.MobileControls = Application.isMobilePlatform;
-            s.Input.Sensitivity = PlayerPrefs.GetFloat("vexa.sens", 2f);
+            s.Input.Sensitivity = UI.VexaSettings.Sensitivity;
+            s.Input.TouchSensitivity = UI.VexaSettings.TouchSensitivity;
             return s;
         }
 
@@ -75,13 +124,13 @@ namespace Vexa.Client
             Client.Log += m => Debug.Log("[client] " + m);
             Client.ShotFired += OnShot;
             Client.Hit += OnHit;
-            Client.Killed += OnKill;
         }
 
         void Awake()
         {
             _camera = new LocalPlayerCamera();
             _effects = new ShotEffects();
+            _world = new WorldVisuals();
         }
 
         void Update()
@@ -90,25 +139,35 @@ namespace Vexa.Client
             HostServer?.Update(dt);
             if (Client == null) return;
 
-            Input.Enabled = !VexaApp.MenuOpen && !VexaApp.BuyOpen;
+            Input.Enabled = !InputBlocked;
             if (Client.Welcomed)
             {
                 var def = Client.Predicted.ActiveDef;
-                Input.ZoomSensitivityScale = Client.Predicted.Zoom > 0 && def.ZoomFov != null ? def.ZoomFov[Client.Predicted.Zoom - 1] / 90f : 1f;
+                Input.ZoomSensitivityScale = Client.Predicted.Zoom > 0 && def.ZoomFov != null ? def.ZoomFov[Client.Predicted.Zoom - 1] / 90f * UI.VexaSettings.ZoomSensitivity : 1f;
             }
             Input.UpdateFrame();
             Client.Update(dt, Input.SampleCommand);
 
             if (!Client.Welcomed)
             {
-                if (Time.unscaledTime - _connectStarted > 10f) Status = "Bağlantı zaman aşımı. Sunucu adresini kontrol et.";
+                if (Time.unscaledTime - _connectStarted > 10f) { Status = "Bağlantı zaman aşımı. Sunucu adresini kontrol et."; Failed = true; }
                 return;
             }
             Status = "";
-            if (_mapRoot == null) _mapRoot = MapBuilder.Build(Client.Map);
+            if (_mapRoot == null)
+            {
+                _mapRoot = MapBuilder.Build(Client.Map);
+                if (string.IsNullOrEmpty(MapName)) MapName = Client.Map.Name;
+            }
+            if (!_sideRequested && Setup != null)
+            {
+                _sideRequested = true;
+                if (Setup.Side != Team.None && Setup.Mode != GameMode.Deathmatch) Client.SelectTeam(Setup.Side);
+            }
             SyncAvatars();
             _camera.Update(this, dt);
             _effects.Update(dt);
+            _world.Update(Client, dt);
         }
 
         void SyncAvatars()
@@ -142,17 +201,13 @@ namespace Vexa.Client
 
         void OnHit(HitEvent h)
         {
-            if (h.Attacker == Client.LocalId) HitMarkerUntil = Time.unscaledTime + 0.15f;
+            if (h.Attacker == Client.LocalId && h.Victim != Client.LocalId)
+            {
+                HitMarkerUntil = Time.unscaledTime + 0.15f;
+                if (h.VictimHealth <= 0) HitMarkerKillUntil = Time.unscaledTime + 0.35f;
+            }
             if (h.Victim == Client.LocalId) DamageFlashUntil = Time.unscaledTime + 0.25f;
             _effects.Blood(h.Point.ToU(), h.Group == HitGroup.Head);
-        }
-
-        void OnKill(KillEvent k)
-        {
-            string N(int id) => id == Client.LocalId ? Client.PlayerName : (Client.GetRemote(id)?.Name ?? ("#" + id));
-            var line = $"{N(k.Killer)}  [{Weapons.Get(k.Weapon)?.Name}{(k.Headshot ? " • KAFA" : "")}{(k.Wallbang ? " • DUVAR" : "")}]  {N(k.Victim)}";
-            KillFeed.Add(line);
-            if (KillFeed.Count > 6) KillFeed.RemoveAt(0);
         }
 
         public void Shutdown()
@@ -161,6 +216,7 @@ namespace Vexa.Client
             _avatars.Clear();
             if (_mapRoot != null) Destroy(_mapRoot);
             _effects?.Clear();
+            _world?.Clear();
             _clientNet?.Dispose(); _clientNet = null;
             _serverNet?.Dispose(); _serverNet = null;
             Client = null; HostServer = null;

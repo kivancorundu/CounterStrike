@@ -55,7 +55,7 @@ namespace Vexa.Client
                 Pitch += md.y * k;
                 var sel = PcInput.WeaponKeys();
                 if (sel != WeaponSelect.None) _pendingSelect = sel;
-                _latched |= PcInput.Buttons() & (Buttons.Jump | Buttons.Attack | Buttons.Attack2 | Buttons.Reload | Buttons.Inspect);
+                _latched |= PcInput.Buttons() & (Buttons.Jump | Buttons.Attack | Buttons.Attack2 | Buttons.Reload | Buttons.Inspect | Buttons.Drop | Buttons.Use);
             }
             Yaw = VMath.NormalizeAngle(Yaw);
             Pitch = Mathf.Clamp(Pitch, -89f, 89f);
@@ -105,6 +105,7 @@ namespace Vexa.Client
             if (K(Key.R)) b |= Core.Buttons.Reload;
             if (K(Key.E)) b |= Core.Buttons.Use;
             if (K(Key.F)) b |= Core.Buttons.Inspect;
+            if (K(Key.G)) b |= Core.Buttons.Drop;
             var m = Mouse.current;
             if (m != null && Cursor.lockState == CursorLockMode.Locked)
             {
@@ -118,6 +119,8 @@ namespace Vexa.Client
             if (KD(Key.Digit1)) return WeaponSelect.Primary;
             if (KD(Key.Digit2)) return WeaponSelect.Secondary;
             if (KD(Key.Digit3)) return WeaponSelect.Melee;
+            if (KD(Key.Digit4)) return WeaponSelect.Grenade;
+            if (KD(Key.Digit5)) return WeaponSelect.Bomb;
             if (KD(Key.Q)) return WeaponSelect.LastUsed;
             var m = Mouse.current;
             if (m != null)
@@ -128,18 +131,24 @@ namespace Vexa.Client
             }
             return WeaponSelect.None;
         }
-        public static bool KeyDown(KeyCode k)
+        static Key ToKey(KeyCode k)
         {
+            if (k >= KeyCode.Alpha1 && k <= KeyCode.Alpha9) return Key.Digit1 + (k - KeyCode.Alpha1);
+            if (k >= KeyCode.A && k <= KeyCode.Z) return Key.A + (k - KeyCode.A);
+            if (k >= KeyCode.F1 && k <= KeyCode.F12) return Key.F1 + (k - KeyCode.F1);
             switch (k)
             {
-                case KeyCode.B: return KD(Key.B);
-                case KeyCode.Escape: return KD(Key.Escape);
-                case KeyCode.Tab: return K(Key.Tab);
-                case KeyCode.F1: return KD(Key.F1);
-                default: return false;
+                case KeyCode.Alpha0: return Key.Digit0;
+                case KeyCode.Escape: return Key.Escape;
+                case KeyCode.Tab: return Key.Tab;
+                case KeyCode.Return: return Key.Enter;
+                case KeyCode.Space: return Key.Space;
+                case KeyCode.BackQuote: return Key.Backquote;
+                default: return Key.None;
             }
         }
-        public static bool KeyHeld(KeyCode k) => k == KeyCode.Tab && K(Key.Tab);
+        public static bool KeyDown(KeyCode k) { var key = ToKey(k); return key != Key.None && KD(key); }
+        public static bool KeyHeld(KeyCode k) { var key = ToKey(k); return key != Key.None && K(key); }
         public static bool AnyMouseDown() => Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame;
 #else
         public static Vector2 MouseDelta()
@@ -161,6 +170,7 @@ namespace Vexa.Client
             if (Input.GetKey(KeyCode.R)) b |= Core.Buttons.Reload;
             if (Input.GetKey(KeyCode.E)) b |= Core.Buttons.Use;
             if (Input.GetKey(KeyCode.F)) b |= Core.Buttons.Inspect;
+            if (Input.GetKey(KeyCode.G)) b |= Core.Buttons.Drop;
             if (Cursor.lockState == CursorLockMode.Locked)
             {
                 if (Input.GetMouseButton(0)) b |= Core.Buttons.Attack;
@@ -173,6 +183,8 @@ namespace Vexa.Client
             if (Input.GetKeyDown(KeyCode.Alpha1)) return WeaponSelect.Primary;
             if (Input.GetKeyDown(KeyCode.Alpha2)) return WeaponSelect.Secondary;
             if (Input.GetKeyDown(KeyCode.Alpha3)) return WeaponSelect.Melee;
+            if (Input.GetKeyDown(KeyCode.Alpha4)) return WeaponSelect.Grenade;
+            if (Input.GetKeyDown(KeyCode.Alpha5)) return WeaponSelect.Bomb;
             if (Input.GetKeyDown(KeyCode.Q)) return WeaponSelect.LastUsed;
             float s = Input.mouseScrollDelta.y;
             if (s > 0) return WeaponSelect.Previous;
@@ -208,6 +220,8 @@ namespace Vexa.Client
             new Btn { Label = "DOLDUR", Norm = new Rect(0.68f, 0.62f, 0.09f, 0.12f), Button = Core.Buttons.Reload },
             new Btn { Label = "NİŞAN", Norm = new Rect(0.80f, 0.36f, 0.09f, 0.13f), Button = Core.Buttons.Attack2 },
             new Btn { Label = "SİLAH", Norm = new Rect(0.45f, 0.86f, 0.1f, 0.11f), Select = WeaponSelect.Next },
+            new Btn { Label = "KULLAN", Norm = new Rect(0.68f, 0.45f, 0.09f, 0.12f), Button = Core.Buttons.Use },
+            new Btn { Label = "BOMBA", Norm = new Rect(0.56f, 0.86f, 0.1f, 0.11f), Select = WeaponSelect.Grenade },
         };
 
         private int _stickFinger = -1, _lookFinger = -1;

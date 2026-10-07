@@ -16,11 +16,13 @@ Game/                       Unity projesi (Unity 6, URP)
   Assets/Vexa/Core/         Oyun çekirdeği: saf C#, Unity'ye bağımlı değil (hareket, silahlar, hasar,
                             çarpışma, netcode, sunucu, istemci tahmini)
   Assets/Vexa/Net/          UDP taşıma (LiteNetLib)
-  Assets/Vexa/Client/       Unity katmanı: giriş, kamera, görseller, efektler, geçici menü/HUD
+  Assets/Vexa/Client/       Unity katmanı: giriş, kamera, oturum, dünya görselleri ve efektler
+  Assets/Vexa/Client/UI/    Arayüz (UI Toolkit, koddan kurulur): menüler, HUD, radar, satın alma, skor, ayarlar
+  Assets/Vexa/Resources/Fonts/  Barlow yazı tipleri (SIL Open Font License, OFL.txt)
   Assets/Vexa/Editor/       Harita dışa aktarma aracı (VEXA menüsü)
   Assets/StreamingAssets/Maps/  .vxmap çarpışma haritaları (sunucu + istemci ortak)
 Server/Vexa.Server/         Bağımsız (headless) Linux/Windows sunucusu, Unity gerektirmez
-Tests/Vexa.Tests/           Otomatik testler (hareket, silahlar, hasar, netcode, hile korumaları)
+Tests/Vexa.Tests/           Otomatik testler (hareket, silahlar, hasar, netcode, hile korumaları, maç kuralları, botlar)
 Tools/                      Unity olmadan derleme kontrolleri
 docs/                       Mimari ve yol haritası
 archive/web-prototype/      Eski tarayıcı prototipi (referans için saklandı)
@@ -35,37 +37,47 @@ dotnet test Tests/Vexa.Tests
 
 ### 2) Sunucuyu çalıştır
 ```bash
-dotnet run --project Server/Vexa.Server -c Release -- --port 27015 --tick 64 --map training --bots 4
+# 5v5 rekabetçi maç; boş yerleri botlar doldurur, bağlanan oyuncular botların yerini alır
+dotnet run --project Server/Vexa.Server -c Release -- --map kasaba --mode competitive --tick 128 --difficulty 0.6
+
+# ölüm maçı, 6 botla
+dotnet run --project Server/Vexa.Server -c Release -- --map training --mode deathmatch --bots 6
 ```
+Modlar: `competitive`, `casual`, `deathmatch`, `practice`. `--difficulty` 0 (kolay) ile 1 (uzman) arasında.
 
 ### 3) Unity'de aç
 1. Unity Hub ile **Unity 6 LTS** (6000.0.x) kur. Mobil için Android/iOS modüllerini de ekle.
 2. Unity Hub → **Add project from disk** → `Game` klasörünü seç. İlk açılışta paketler indirilir; farklı bir 6000.0 sürümün varsa yükseltmeyi kabul et.
 3. **Edit → Project Settings → Player → Active Input Handling = Both**.
 4. Proje URP grafik ayarı istemezse: *Assets → Create → Rendering → URP Asset (with Universal Renderer)*. Sonra *Project Settings → Graphics* ve *Quality* bölümlerinde bu asset'i seç.
-5. Herhangi bir sahnede (boş sahne de olur) **Play**'e bas. VEXA menüsü kendiliğinden açılır.
-6. **"Antrenman / Sunucu kur"** seçeneği oyunu botlarla başlatır. **"Sunucuya bağlan"** ise 2. adımdaki sunucuya bağlanır.
+5. Herhangi bir sahnede (boş sahne de olur) **Play**'e bas. VEXA ana menüsü kendiliğinden açılır.
+6. **OYNA** sekmesinde modu, haritayı, tarafı ve bot zorluğunu seç, ardından **MAÇI BAŞLAT**'a bas. Aynı sayfadaki **SUNUCUYA KATIL** bölümü 2. adımdaki sunucuya bağlanır.
 
 **Kontroller (PC):**
 
 | Tuş | İşlev |
 |---|---|
 | WASD | Hareket |
-| Fare | Bakış / ateş |
+| Fare | Bakış / ateş (sağ tık: dürbün, susturucu, ikincil atış) |
 | Shift | Sessiz yürü |
 | Ctrl veya C | Eğil |
 | Boşluk | Zıpla |
 | R | Şarjör değiştir |
-| 1 / 2 / 3 | Silah seç |
+| 1 / 2 / 3 | Birincil / ikincil / bıçak |
+| 4 | El bombaları (tekrar basınca sıradaki) |
+| 5 | C4 (bomba bölgesinde sol tık basılı tutunca kurulur) |
+| E | Silah al / bombayı imha et (basılı tut) |
+| G | Silahı bırak |
 | Q | Son silah |
-| B | Satın al (prototipte ücretsiz) |
+| B | Satın alma menüsü (1–6 sütun, ardından ürün numarası) |
 | Tab | Skor tablosu |
+| M | Takım değiştir |
 | Esc | Menü |
 
-**Mobil:** sol yarıda joystick, sağ yarıda sürükleyerek bakış, ayrıca ekran butonları.
+**Mobil:** sol yarıda joystick, sağ yarıda sürükleyerek bakış, ekran butonları; üstte MENÜ / SATIN AL / SKOR.
 
 > Not: Bu repo, Unity'nin kurulu olmadığı bir ortamda geliştiriliyor. Çekirdek kod otomatik testlerle doğrulanıyor. Unity scriptleri de Unity referans kütüphanelerine karşı derleniyor. Unity'de ilk açılışta bir derleme hatası çıkarsa Console çıktısını paylaşman yeterli.
 
 ## Durum
 
-Mevcut kilometre taşı: **çekirdek + netcode temeli**. Ayrıntılar için [docs/ROADMAP.md](docs/ROADMAP.md) ve [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Mevcut kilometre taşı: **rekabetçi oynanış (Faz 1) ve gerçek arayüz (Faz 3)**. Modeller ve haritaların sanat geçişi sırada. Ayrıntılar için [docs/ROADMAP.md](docs/ROADMAP.md) ve [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

@@ -2,7 +2,7 @@
 
 Durum: ✅ bitti · 🔄 sürüyor · ⏳ sırada
 
-## Faz 0 — Çekirdek ve netcode temeli ✅ (bu commit)
+## Faz 0 — Çekirdek ve netcode temeli ✅
 
 - ✅ **Unity'den bağımsız simülasyon çekirdeği.** .NET Standard 2.1, Unity ile birebir aynı derleme ayarları.
 - ✅ **Source tarzı hareket:** sürtünme ve ivme, hava strafe'i, basamak çıkma, merdivende yere yapışma, eğilme, çömelerek zıplama, stamina, vurulunca yavaşlama, düşme hasarı.
@@ -17,15 +17,22 @@ Durum: ✅ bitti · 🔄 sürüyor · ⏳ sırada
 - ✅ **Harita aracı ve test:** harita dışa aktarma aracı, test haritası.
 - ✅ **38 otomatik test** + CI.
 
-## Faz 1 — Rekabetçi oynanış ⏳
+## Faz 1 — Rekabetçi oynanış ✅
 
-- Takımlar ve 5v5 maç akışı: donma süresi, 1:55 tur, MR12, devre arası, uzatma.
-- Ekonomi: CS2 kuralları (web prototipinde var, çekirdeğe taşınacak); satın alma bölgesi ve süresi.
-- C4: kurma (3.2 sn), imha (10/5 sn), bomba düşürme ve alma.
-- Bombalar, istemci tahminli atışla: HE, flaş, hacimsel sis, molotof, dekoy.
-- Oyuncu-oyuncu çarpışması, silah yere atma ve alma.
-- Tam bot yapay zekâsı (web prototipindeki taktik botların çekirdeğe taşınması).
-- Sunucu tarafı demo kaydı.
+- ✅ **Maç modları:** Rekabetçi (5v5, MR12, uzatma MR3), Basit (MR8), Ölüm Maçı (10 dk), Antrenman.
+  - Isınma, donma süresi, 1:55 raund, devre arasında taraf değişimi, MVP.
+- ✅ **CS2 ekonomisi:** kayıp bonusu serisi, kurma bonusu, süre dolunca hayatta kalan T'ye para yok.
+  - Satın alma bölgesi ve süresi; rakip parası skor tablosunda gizli.
+- ✅ **C4:** kurma (3.2 sn), 40 sn sayaç, imha (10 sn, kitle 5 sn).
+  - Bomba düşürme ve alma, patlama hasarı mesafeyle azalır; bomba bilgisi rakipten gizlenir.
+- ✅ **El bombaları:** HE, flaş (bakış yönü ve mesafe modeli), hacimsel sis (görüşü keser), molotof/yangın (sis söndürür), dekoy.
+- ✅ **Yerdeki silahlar:** ölünce düşer, G ile bırakılır, E ile alınır.
+- ✅ **Botlar:** çarpışma dünyasından otomatik üretilen navigasyon ağı ve A*.
+  - Ekonomiye göre satın alma (tabanca / eko / zorunlu / tam alım).
+  - Bölge planı, bomba kurma, geri alma ve imha; bomba atma; tepki süresi ve sprey kontrolü.
+- ✅ **Rekabetçi harita "Kasaba":** iki bomba bölgesi, satın alma bölgeleri, 5'e 5 doğma noktaları.
+- ✅ **49 otomatik test**; tam bot maçı Kasaba'da sonuna kadar oynanıyor.
+- ⏳ Oyuncu-oyuncu çarpışması, sunucu tarafı demo kaydı (Faz 5'e taşındı).
 
 ## Faz 2 — Görseller: silahlar ve karakterler ⏳
 
@@ -37,11 +44,22 @@ Durum: ✅ bitti · 🔄 sürüyor · ⏳ sırada
 
 > Model üretimi Blender script'leriyle yapılacak. PC'de CS2 kalitesi hedefleniyorsa, prototip modeller sonrasında bir 3D sanatçının rötuşu önerilir.
 
-## Faz 3 — Gerçek arayüz ⏳
+## Faz 3 — Gerçek arayüz 🔄
 
-- CS2 tarzı HUD (UI Toolkit): radar, öldürme akışı, satın alma menüsü, skor tablosu, nişangah editörü.
-- Mobil arayüz: düzenlenebilir buton yerleşimi, jiroskopla nişan seçeneği.
-- Ayarlar: grafik, ses, kontroller, hassasiyet.
+- ✅ **UI Toolkit arayüzü** (sahne veya asset gerektirmez, tamamen koddan kurulur). Özgün VEXA tasarımı:
+  - koyu zemin, asit yeşili vurgu, turuncu saldırı ve mavi savunma rengi, Barlow yazı tipi (OFL lisanslı).
+- ✅ **Ana menü:** arkada haritanın üstünde dönen kamera, mod / harita / taraf / bot zorluğu / takım boyutu seçimi.
+  - Sunucuya IP ile katılma, yükleme ekranı ve ipuçları.
+- ✅ **HUD:** raund çubuğu (skor, süre, canlı oyuncular), haritadan otomatik üretilen dönen radar, para.
+  - Öldürme akışı (kafa / duvar / sis / kör etiketleri), raund sonu ve MVP bandı.
+  - Can ve zırh, envanter ve mermi, kurma ve imha çubuğu, hasar yönü göstergesi, flaş ve dürbün katmanı, ipuçları.
+- ✅ **Satın alma menüsü:** 6 sütun, klavye kısayolları, sahip olunan / pahalı / dolu durumları.
+- ✅ **Skor tablosu:** Ö/A/Ö(D), MVP, kafa yüzdesi, raund başına hasar, raund geçmişi.
+- ✅ **Duraklatma menüsü** (takım değiştirme), maç sonu ekranı (zafer / mağlubiyet, maçın oyuncuları).
+- ✅ **Ayarlar:** hassasiyet (CS ölçeği), nişangah editörü (önizleme, hazır ayarlar, paylaşım kodu), görüntü, FPS sınırı, ses, tuşlar.
+- ✅ **Dünya görselleri (geçici):** uçan bombalar, sis, ateş, kurulu bomba (giderek hızlanan ışık), yerdeki silahlar.
+- ⏳ Mobil: düzenlenebilir buton yerleşimi, jiroskopla nişan.
+- ⏳ Tuş atama ekranı, ses paketi.
 
 ## Faz 4 — Haritalar ⏳
 
