@@ -23,7 +23,68 @@ namespace Vexa.Core.Server
         public float DeathmatchDuration = 600f, RespawnDelay = 2f;
         public float BotDifficulty = 0.5f;   // 0 easy .. 1 expert
 
+        // ---- tournament (esports) settings ----
+        public bool Tournament;                 // ready-up, chat commands, results file
+        public string TeamA = "TAKIM A", TeamB = "TAKIM B";
+        public List<string> RosterA = new List<string>(), RosterB = new List<string>();  // player names; empty = anyone
+        public bool TeamAStartsCT;              // otherwise team A starts as T (after the knife round, the winner picks)
+        public bool RequireReady = true;        // warmup lasts until every player types .ready
+        public bool KnifeRound;
+        public int TacticalTimeouts = 3;
+        public float TacticalTimeoutTime = 30f;
+        public float SidePickTime = 30f;
+        public string ResultsPath;              // results JSON is written here when the match ends
+        public string MatchId;                  // external id (e.g. a rally.gg match), echoed in the results
+        public string Map;                      // optional map name from the match file
+
         public bool HasRounds => Mode == GameMode.Competitive || Mode == GameMode.Casual;
+
+        /// <summary>
+        /// Builds a config from a JSON match file, e.g.
+        /// { "mode": "competitive", "teamA": "Kartallar", "teamB": "Kurtlar", "rosterA": ["ali", ...], "knifeRound": true, "maxRounds": 24 }.
+        /// </summary>
+        public static MatchConfig FromJson(string json)
+        {
+            if (!(MiniJson.Parse(json) is Dictionary<string, object> d)) throw new FormatException("match config must be a JSON object");
+            MatchConfig c;
+            switch ((d.Str("mode", "competitive")).ToLowerInvariant())
+            {
+                case "casual": c = Casual(); break;
+                case "deathmatch": c = Deathmatch(); break;
+                case "practice": c = Practice(); break;
+                case "competitive": c = Competitive(); break;
+                default: throw new FormatException("unknown mode: " + d.Str("mode"));
+            }
+            c.Tournament = d.Bool("tournament", true);
+            c.MatchId = d.Str("matchId", null);
+            c.Map = d.Str("map", null);
+            c.TeamA = d.Str("teamA", c.TeamA);
+            c.TeamB = d.Str("teamB", c.TeamB);
+            c.RosterA = d.Strings("rosterA");
+            c.RosterB = d.Strings("rosterB");
+            c.TeamAStartsCT = d.Str("teamAStarts", "t").Equals("ct", StringComparison.OrdinalIgnoreCase);
+            c.RequireReady = d.Bool("requireReady", c.RequireReady);
+            c.KnifeRound = d.Bool("knifeRound", c.KnifeRound);
+            c.TacticalTimeouts = d.Int("tacticalTimeouts", c.TacticalTimeouts);
+            c.TacticalTimeoutTime = d.Num("tacticalTimeoutSeconds", c.TacticalTimeoutTime);
+            c.MaxRounds = d.Int("maxRounds", c.MaxRounds);
+            c.HalfRounds = d.Int("halfRounds", c.MaxRounds / 2);
+            c.WinRounds = d.Int("winRounds", c.MaxRounds / 2 + 1);
+            c.Overtime = d.Bool("overtime", c.Overtime);
+            c.OvertimeMoney = d.Int("overtimeMoney", c.OvertimeMoney);
+            c.StartMoney = d.Int("startMoney", c.StartMoney);
+            c.MaxMoney = d.Int("maxMoney", c.MaxMoney);
+            c.RoundTime = d.Num("roundTime", c.RoundTime);
+            c.FreezeTime = d.Num("freezeTime", c.FreezeTime);
+            c.BuyTime = d.Num("buyTime", c.BuyTime);
+            c.BombTime = d.Num("bombTime", c.BombTime);
+            c.FriendlyFire = d.Bool("friendlyFire", c.FriendlyFire);
+            c.TeamSize = d.Int("teamSize", c.TeamSize);
+            c.FillBots = d.Bool("fillBots", false);
+            c.BotDifficulty = d.Num("botDifficulty", c.BotDifficulty);
+            c.ResultsPath = d.Str("resultsPath", null);
+            return c;
+        }
         public bool HasEconomy => HasRounds;
 
         public static MatchConfig Competitive() => new MatchConfig();
@@ -84,6 +145,7 @@ namespace Vexa.Core.Server
                 PhaseEndTick = Tick + (int)(Config.WarmupTime * TickRate);
                 if (Config.FillBots) for (int i = 0; i < Config.TeamSize * 2; i++) AddBot(NextBotName(), i % 2 == 0 ? Team.T : Team.CT);
             }
+            InitTournament();
         }
 
         string NextBotName() => BotNames[_botNameIdx++ % BotNames.Length];
@@ -117,9 +179,11 @@ namespace Vexa.Core.Server
         private void OnPlayerJoined(Player p)
         {
             if (!Config.HasRounds) { Respawn(p); return; }
+            if (p.State.Team == Team.None) return; // spectator
             if (Phase == GamePhase.Warmup || Phase == GamePhase.Freeze)
             {
                 SpawnForRound(p, false, PickSpawn(p.State.Team, null));
+                if (Phase == GamePhase.Warmup) p.Money = Config.MaxMoney; // warmup: buy anything, reset when the match begins
                 if (Phase == GamePhase.Freeze && p.Bot != null) BotBuy(p);
             }
         }
@@ -132,7 +196,7 @@ namespace Vexa.Core.Server
 
         private void RequestTeam(Player p, Team team)
         {
-            if (!Config.HasRounds || team == p.State.Team) return;
+            if (!Config.HasRounds || team == p.State.Team || TeamsLocked) return;
             if (team != Team.T && team != Team.CT) team = AutoTeam();
             if (team == p.State.Team) return;
             if (p.State.Alive && Phase == GamePhase.Live) { OnDeath(p, null, null, false, false); }
@@ -230,16 +294,18 @@ namespace Vexa.Core.Server
                 SpawnForRound(p, keep, PickSpawn(p.State.Team, used));
             }
             _resetInventories = false;
+            if (_knifeRound) PrepareKnifeRound();
             var ts = _players.Where(p => p.State.Team == Team.T && p.State.Alive).ToList();
-            if (ts.Count > 0)
+            if (ts.Count > 0 && !_knifeRound)
             {
                 var carrier = ts[_rng.Next(ts.Count)];
                 carrier.State.HasC4 = true;
                 Bomb = new BombInfo { State = BombState.Carried, CarrierId = carrier.Id };
             }
             ServerBot.PlanRound(this);
-            foreach (var p in _players) if (p.Bot != null) BotBuy(p);
+            if (!_knifeRound) foreach (var p in _players) if (p.Bot != null) BotBuy(p);
             Broadcast(new GameEvent { Type = GameEventType.RoundStart, A = Round });
+            ApplyPendingPause();
             SendMatchStateAll();
         }
 
@@ -248,11 +314,13 @@ namespace Vexa.Core.Server
             switch (Phase)
             {
                 case GamePhase.Warmup:
-                    if (Tick >= PhaseEndTick) StartRound();
+                    StepWarmup();
                     break;
                 case GamePhase.Freeze:
+                    StepPause();
                     if (Tick >= PhaseEndTick)
                     {
+                        if (_activePause == PauseKind.Tactical) _activePause = PauseKind.None;
                         Phase = GamePhase.Live;
                         PhaseEndTick = Tick + (int)(Config.RoundTime * TickRate);
                         BuyEndTick = Tick + (int)(Config.BuyTime * TickRate);
@@ -283,6 +351,7 @@ namespace Vexa.Core.Server
             }
             StepBomb();
             if (Phase != GamePhase.Live) return;
+            if (_knifeRound && Tick >= PhaseEndTick) { EndRound(KnifeTimeWinner(), RoundEndReason.TimeExpired); return; }
             int totalT = TeamCount(Team.T), totalCT = TeamCount(Team.CT);
             int aliveT = _players.Count(p => p.State.Team == Team.T && p.State.Alive);
             int aliveCT = _players.Count(p => p.State.Team == Team.CT && p.State.Alive);
@@ -301,10 +370,12 @@ namespace Vexa.Core.Server
             if (Phase != GamePhase.Live) return;
             Phase = GamePhase.RoundEnd;
             PhaseEndTick = Tick + (int)(Config.RoundEndDelay * TickRate);
+            if (EndKnifeRound(winner, reason)) return;
             var loser = winner == Team.CT ? Team.T : Team.CT;
             _score[(int)winner]++;
             RoundsPlayed++;
             History.Add(new RoundResult { Winner = winner, Reason = reason });
+            RecordRound(winner, reason);
             bool planted = Bomb.State == BombState.Planted || Bomb.State == BombState.Exploded || Bomb.State == BombState.Defused;
 
             // ---- economy (CS2) ----
@@ -370,6 +441,7 @@ namespace Vexa.Core.Server
 
         private void NextRound()
         {
+            if (ResolveSidePick()) return;
             var w = MatchWinner();
             bool drawAtEnd = Config.Mode == GameMode.Casual && RoundsPlayed >= Config.MaxRounds && w == Team.None;
             if (w != Team.None || drawAtEnd) { IsDraw = drawAtEnd; EndMatch(w); return; }
@@ -397,6 +469,7 @@ namespace Vexa.Core.Server
                 p.Money = money;
                 BroadcastPlayerInfo(p);
             }
+            _teamAIsT = !_teamAIsT;
             int t = _score[1]; _score[1] = _score[2]; _score[2] = t;
             for (int i = 0; i < History.Count; i++) { var h = History[i]; h.Winner = h.Winner == Team.T ? Team.CT : Team.T; History[i] = h; }
             _loss[1] = _loss[2] = 1;
@@ -413,6 +486,7 @@ namespace Vexa.Core.Server
             SendMatchStateAll();
             SendScoreboards();
             Info($"match over: {winner} {_score[1]}:{_score[2]}");
+            PublishResults(winner);
         }
 
         // ---------------- kills & economy ----------------
@@ -448,7 +522,7 @@ namespace Vexa.Core.Server
                 if (a == null || (victim.State.Team != Team.None && a.State.Team == victim.State.Team)) continue;
                 if (kv.Value >= 41) { a.Assists++; a.Score += 1; }
             }
-            if (!Config.HasRounds) victim.RespawnAt = Tick * (double)Dt + Config.RespawnDelay;
+            if (!Config.HasRounds || Phase == GamePhase.Warmup) victim.RespawnAt = Tick * (double)Dt + Config.RespawnDelay;
             ServerBot.OnAnyDeath(this, victim, attacker);
         }
 
@@ -457,6 +531,8 @@ namespace Vexa.Core.Server
         {
             reason = null;
             if (!p.State.Alive) { reason = "Ölüyken satın alamazsın."; return false; }
+            if (_knifeRound) { reason = "Bıçak raundunda satın alma yok."; return false; }
+            if (Phase == GamePhase.Warmup && Config.HasRounds) return true; // warmup: buy anywhere
             if (Config.Mode == GameMode.Practice) return true;
             if (Config.Mode == GameMode.Deathmatch)
             {
@@ -786,6 +862,7 @@ namespace Vexa.Core.Server
             _w.Byte((byte)Config.MaxRounds); _w.Byte((byte)Config.WinRounds); _w.Byte((byte)Config.HalfRounds);
             _w.Byte((byte)Math.Min(History.Count, 60));
             for (int i = Math.Max(0, History.Count - 60); i < History.Count; i++) { _w.Byte((byte)History[i].Winner); _w.Byte((byte)History[i].Reason); }
+            WriteTournamentState();
         }
         private void SendMatchState(Player p) { WriteMatchState(); SendTo(p, Delivery.ReliableOrdered); }
         private void SendMatchStateAll() { WriteMatchState(); SendAll(Delivery.ReliableOrdered); }

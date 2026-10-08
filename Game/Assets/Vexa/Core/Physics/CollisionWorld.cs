@@ -45,6 +45,12 @@ namespace Vexa.Core
         private int _gw, _gh;
         private float _ox, _oz;
 
+        /// <summary>
+        /// Moving obstacles (other players' hulls) that block movement traces but not bullets or line of sight.
+        /// The simulation fills this right before stepping one player and clears it afterwards.
+        /// </summary>
+        public readonly List<StaticBox> Dynamic = new List<StaticBox>();
+
         public int Count => _boxes.Count;
         public StaticBox GetBox(int i) => _boxes[i];
         public IReadOnlyList<StaticBox> Boxes => _boxes;
@@ -127,7 +133,19 @@ namespace Vexa.Core
                     bestN = AxisNormal(axis, d);
                 }
             }
-            if (bestI >= 0)
+            for (int j = 0; j < Dynamic.Count; j++)
+            {
+                var b = Dynamic[j];
+                Vector3 mn = b.Min - half, mx = b.Max + half;
+                if (!SweepSlab(start, d, mn, mx, out float tEnter, out _, out int axis, out bool inside)) continue;
+                if (inside)
+                {
+                    // overlapping another player (spawned on top of each other): let them walk apart
+                    continue;
+                }
+                if (tEnter < best) { best = tEnter; bestI = -2 - j; bestN = AxisNormal(axis, d); }
+            }
+            if (bestI != -1)
             {
                 float len = d.Length();
                 float back = len > 1e-6f ? SurfaceEpsilon / len : 0f;
@@ -192,7 +210,22 @@ namespace Vexa.Core
             return p.X > mn.X + e && p.X < mx.X - e && p.Y > mn.Y + e && p.Y < mx.Y - e && p.Z > mn.Z + e && p.Z < mx.Z - e;
         }
 
+        /// <summary>Overlap test against static boxes and dynamic obstacles (index -2-j for <see cref="Dynamic"/>[j]).</summary>
         public bool OverlapBox(Vector3 center, Vector3 half, out int boxIndex)
+        {
+            if (OverlapStatic(center, half, out boxIndex)) return true;
+            Vector3 mn = center - half, mx = center + half;
+            const float e = 1e-4f;
+            for (int j = 0; j < Dynamic.Count; j++)
+            {
+                var b = Dynamic[j];
+                if (mn.X < b.Max.X - e && mx.X > b.Min.X + e && mn.Y < b.Max.Y - e && mx.Y > b.Min.Y + e && mn.Z < b.Max.Z - e && mx.Z > b.Min.Z + e)
+                { boxIndex = -2 - j; return true; }
+            }
+            return false;
+        }
+
+        private bool OverlapStatic(Vector3 center, Vector3 half, out int boxIndex)
         {
             var list = Tmp;
             Gather(center.X - half.X, center.Z - half.Z, center.X + half.X, center.Z + half.Z, list);
@@ -215,7 +248,7 @@ namespace Vexa.Core
         {
             for (int iter = 0; iter < 4; iter++)
             {
-                if (!OverlapBox(center, half, out int i)) break;
+                if (!OverlapStatic(center, half, out int i)) break;
                 var b = _boxes[i];
                 float px1 = b.Max.X - (center.X - half.X), px2 = (center.X + half.X) - b.Min.X;
                 float py1 = b.Max.Y - (center.Y - half.Y), py2 = (center.Y + half.Y) - b.Min.Y;

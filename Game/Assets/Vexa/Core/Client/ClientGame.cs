@@ -86,6 +86,14 @@ namespace Vexa.Core.Client
         public event Action<GameEvent> GameEventReceived;
         public event Action<GrenadeThrow> LocalThrow;
         public event Action MatchStateChanged;
+        public event Action<ChatMessage> ChatReceived;
+
+        // tournament info (from MatchState)
+        public MatchFlags Flags;
+        public string TeamNameT = "", TeamNameCT = "";
+        public int ReadyCount, ReadyNeeded, TimeoutsT, TimeoutsCT;
+        public Team KnifeWinner;
+        public string NameOfTeam(Team side) => side == Team.T ? (TeamNameT.Length > 0 ? TeamNameT : "SALDIRANLAR") : side == Team.CT ? (TeamNameCT.Length > 0 ? TeamNameCT : "SAVUNANLAR") : "";
 
         public event Action<ShotInfo, bool> ShotFired;  // (shot, isLocalPrediction)
         public event Action<HitEvent> Hit;
@@ -145,6 +153,13 @@ namespace Vexa.Core.Client
                 if (Math.Abs(err) > TickRate * 0.5) ServerTickEstimate = target;   // big jump: snap
                 else ServerTickEstimate += err * Math.Min(1.0, realDt * 4.0);
             }
+            // other players block our movement too: predict against where we currently see them
+            _ctx.Obstacles.Clear();
+            foreach (var r in _remotes.Values)
+                if (TryGetRemotePose(r.Id, out var pose) && pose.Alive)
+                    _ctx.Obstacles.Add(SimContext.HullOf(new PlayerState { Position = pose.Position, Ducked = pose.Ducked }));
+            _replayCtx.Obstacles.Clear();
+            _replayCtx.Obstacles.AddRange(_ctx.Obstacles);
             int steps = 0;
             while (_acc >= Dt && steps < 8)
             {
@@ -198,6 +213,14 @@ namespace Vexa.Core.Client
         public void SelectTeam(Team t)
         {
             _w.Reset(); _w.Byte((byte)Msg.TeamSelect); _w.Byte((byte)t);
+            _net.Send(0, _w.Data, _w.Length, Delivery.ReliableOrdered);
+        }
+
+        public void SendChat(string text, bool teamOnly)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return;
+            if (text.Length > 120) text = text.Substring(0, 120);
+            _w.Reset(); _w.Byte((byte)Msg.Chat); _w.Bool(teamOnly); _w.String(text);
             _net.Send(0, _w.Data, _w.Length, Delivery.ReliableOrdered);
         }
 
@@ -275,6 +298,11 @@ namespace Vexa.Core.Client
                         int n = _r.Byte();
                         History.Clear();
                         for (int i = 0; i < n; i++) History.Add(new RoundResult { Winner = (Team)_r.Byte(), Reason = (RoundEndReason)_r.Byte() });
+                        Flags = (MatchFlags)_r.Byte();
+                        TeamNameT = _r.String(); TeamNameCT = _r.String();
+                        ReadyCount = _r.Byte(); ReadyNeeded = _r.Byte();
+                        TimeoutsT = _r.Byte(); TimeoutsCT = _r.Byte();
+                        KnifeWinner = (Team)_r.Byte();
                         MatchStateChanged?.Invoke();
                         break;
                     }
@@ -289,6 +317,12 @@ namespace Vexa.Core.Client
                     {
                         var info = new RoundEndInfo { Winner = (Team)_r.Byte(), Reason = (RoundEndReason)_r.Byte(), MvpId = _r.Byte(), MvpReason = _r.Byte(), MvpKills = _r.Byte() };
                         RoundEnded?.Invoke(info);
+                        break;
+                    }
+                case Msg.Chat:
+                    {
+                        var m = Protocol.ReadChat(_r);
+                        if (!_r.Error) ChatReceived?.Invoke(m);
                         break;
                     }
                 case Msg.Event:

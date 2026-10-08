@@ -32,6 +32,7 @@ namespace Vexa.Core.Server
             internal float TimeCredit = -1;            // ticks of command time the player may still consume
             public bool IsBot => Peer < 0;
             public Team PreferredTeam;
+            public bool MatchReady;          // typed .ready in a tournament warmup
 
             // match stats
             public int Money;
@@ -153,7 +154,7 @@ namespace Vexa.Core.Server
                         if (ver != Protocol.Version || p != null) { _net.Disconnect(peer); return; }
                         if (string.IsNullOrWhiteSpace(name)) name = "Player";
                         if (name.Length > 24) name = name.Substring(0, 24);
-                        var team = AutoTeam();
+                        var team = TeamForJoin(name);
                         MakeRoomOnTeam(team);
                         p = NewPlayer(peer, name, team);
                         p.Ready = true;
@@ -187,6 +188,14 @@ namespace Vexa.Core.Server
                 case Msg.TeamSelect:
                     if (p != null) RequestTeam(p, (Team)_r.Byte());
                     break;
+                case Msg.Chat:
+                    {
+                        if (p == null) return;
+                        bool teamOnly = _r.Bool();
+                        string text = _r.String();
+                        if (!_r.Error) OnChat(p, teamOnly, text);
+                        break;
+                    }
             }
         }
 
@@ -291,6 +300,9 @@ namespace Vexa.Core.Server
             _ctx.PlantAllowed = Phase == GamePhase.Live && Bomb.State == BombState.Carried;
             _currentShooter = p;
             p.LastInterpTick = cmd.InterpTick;
+            _ctx.Obstacles.Clear();
+            foreach (var o in _players)
+                if (o != p && o.State.Alive) _ctx.Obstacles.Add(SimContext.HullOf(o.State));
             PlayerSimulation.Step(ref p.State, cmd, _ctx);
             p.LastCmdTick = cmd.Tick;
             p.CmdsProcessed++;

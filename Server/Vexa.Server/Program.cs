@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
@@ -8,8 +9,10 @@ using Vexa.Net;
 
 // vexa-server --port 27015 --tick 64 --map kasaba --mode competitive --difficulty 0.5
 // modes: competitive (5v5 MR12, bots fill empty slots), casual, deathmatch, practice
+// tournament: vexa-server --config match.json   (team names, rosters, knife round, ready-up, results file)
+// console: type "help" for admin commands (status, say, pause, unpause, forceready, restart, kick)
 int port = 27015, tick = 64, bots = 0, maxPlayers = 12;
-string mapName = "training", modeName = "deathmatch";
+string mapName = "training", modeName = "deathmatch", configPath = null;
 float difficulty = 0.5f;
 for (int i = 0; i < args.Length - 1; i++)
 {
@@ -21,31 +24,54 @@ for (int i = 0; i < args.Length - 1; i++)
         case "--bots": bots = int.Parse(args[++i]); break;
         case "--max-players": maxPlayers = int.Parse(args[++i]); break;
         case "--mode": modeName = args[++i].ToLowerInvariant(); break;
+        case "--config": configPath = args[++i]; break;
         case "--difficulty": difficulty = float.Parse(args[++i], System.Globalization.CultureInfo.InvariantCulture); break;
     }
 }
 if (tick != 64 && tick != 128) { Console.WriteLine("tick must be 64 or 128"); return 1; }
 
+MatchConfig config;
+if (configPath != null)
+{
+    try { config = MatchConfig.FromJson(File.ReadAllText(configPath)); }
+    catch (Exception e) { Console.WriteLine($"bad match config {configPath}: {e.Message}"); return 1; }
+    if (!string.IsNullOrEmpty(config.Map)) mapName = config.Map;
+}
+else
+{
+    switch (modeName)
+    {
+        case "competitive": config = MatchConfig.Competitive(); break;
+        case "casual": config = MatchConfig.Casual(); break;
+        case "practice": config = MatchConfig.Practice(); break;
+        case "deathmatch": config = MatchConfig.Deathmatch(); break;
+        default: Console.WriteLine("unknown mode: " + modeName); return 1;
+    }
+    config.BotDifficulty = Math.Clamp(difficulty, 0f, 1f);
+}
+
 string mapPath = Path.Combine(AppContext.BaseDirectory, "Maps", mapName + ".vxmap");
+if (!File.Exists(mapPath)) { Console.WriteLine("map not found: " + mapPath); return 1; }
 var map = MapData.Parse(File.ReadAllText(mapPath));
 using var transport = LiteNetTransport.StartServer(port, maxPlayers);
-MatchConfig config;
-switch (modeName)
-{
-    case "competitive": config = MatchConfig.Competitive(); break;
-    case "casual": config = MatchConfig.Casual(); break;
-    case "practice": config = MatchConfig.Practice(); break;
-    case "deathmatch": config = MatchConfig.Deathmatch(); break;
-    default: Console.WriteLine("unknown mode: " + modeName); return 1;
-}
-config.BotDifficulty = Math.Clamp(difficulty, 0f, 1f);
 var game = new ServerGame(transport, map, tick, config);
 game.Log += m => Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] {m}");
 for (int i = 0; i < bots; i++) game.AddBot("Bot " + (i + 1));
 Console.WriteLine($"VEXA dedicated server | {config.Mode} | map {map.Name} | {tick} tick | UDP {port} | {bots} extra bots");
 
+if (config.Tournament) Console.WriteLine($"tournament: {config.TeamA} vs {config.TeamB}{(config.KnifeRound ? " · knife round" : "")}{(config.RequireReady ? " · ready-up" : "")}");
+
 bool running = true;
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; running = false; };
+
+// admin console on stdin (commands run on the game thread)
+var consoleLines = new ConcurrentQueue<string>();
+var consoleThread = new Thread(() =>
+{
+    try { string line; while ((line = Console.ReadLine()) != null) consoleLines.Enqueue(line); }
+    catch (Exception) { }
+}) { IsBackground = true };
+consoleThread.Start();
 
 // fixed-rate loop with a precise sleep (sleep coarse, spin the last ~1 ms)
 var sw = Stopwatch.StartNew();
@@ -61,6 +87,12 @@ while (running)
         if (wait > 0.002) Thread.Sleep((int)((wait - 0.001) * 1000));
         else Thread.SpinWait(50);
         continue;
+    }
+    while (consoleLines.TryDequeue(out var cmdLine))
+    {
+        if (cmdLine.Trim() == "quit") { running = false; break; }
+        var reply = game.ConsoleCommand(cmdLine);
+        if (!string.IsNullOrEmpty(reply)) Console.WriteLine(reply);
     }
     double t0 = sw.Elapsed.TotalSeconds;
     game.Step();

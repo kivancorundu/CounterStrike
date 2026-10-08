@@ -1,0 +1,20 @@
+// VEXA tournament match file: vexa-server --config tournament-match.json
+{
+  "matchId": "ornek-final-1",
+  "mode": "competitive",
+  "map": "kasaba",
+  "teamA": "Kartallar",
+  "teamB": "Bozkurtlar",
+  "rosterA": ["ali", "ayse", "mehmet", "zeynep", "can"],
+  "rosterB": ["deniz", "ece", "emre", "selin", "baris"],
+  "teamAStarts": "t",
+  "knifeRound": true,
+  "requireReady": true,
+  "tacticalTimeouts": 3,
+  "tacticalTimeoutSeconds": 30,
+  "maxRounds": 24,
+  "overtime": true,
+  "overtimeMoney": 12500,
+  "fillBots": false,
+  "resultsPath": "results/ornek-final-1.json"
+}

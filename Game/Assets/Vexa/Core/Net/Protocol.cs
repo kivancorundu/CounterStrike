@@ -32,6 +32,16 @@ namespace Vexa.Core.Net
         Detonation, Purchase, PurchaseDenied, Halftime, Message, DefuseStarted, MatchOver,
     }
 
+    [System.Flags]
+    public enum MatchFlags : byte
+    {
+        None = 0, Tournament = 1, WaitingReady = 2, KnifeRound = 4, SidePick = 8,
+        TacticalPause = 16, TechnicalPause = 32, PausePending = 64,
+    }
+
+    /// <summary>Chat line. SenderId 0 = server message.</summary>
+    public struct ChatMessage { public int SenderId; public Team SenderTeam; public bool TeamOnly, Dead; public string Text; }
+
     public struct BombInfo
     {
         public BombState State;
@@ -91,7 +101,7 @@ namespace Vexa.Core.Net
     /// <summary>Wire encoding for every message. Shared by client and server.</summary>
     public static class Protocol
     {
-        public const ushort Version = 1;
+        public const ushort Version = 2;
         public const string ConnectKey = "VEXA";
         public const int InputRedundancy = 4;
 
@@ -216,6 +226,20 @@ namespace Vexa.Core.Net
 
         public static void WriteArea(NetWriter w, in AreaInfo a) { w.UShort((ushort)a.Id); w.Byte((byte)a.Type); w.Vec3(a.Center); w.Float(a.Radius); w.Int(a.StartTick); w.Int(a.EndTick); }
         public static AreaInfo ReadArea(NetReader r) => new AreaInfo { Id = r.UShort(), Type = (GrenadeType)r.Byte(), Center = r.Vec3(), Radius = r.Float(), StartTick = r.Int(), EndTick = r.Int() };
+
+        public static void WriteChat(NetWriter w, in ChatMessage m)
+        {
+            w.Reset(); w.Byte((byte)Msg.Chat); w.Byte((byte)m.SenderId); w.Byte((byte)m.SenderTeam);
+            w.Byte((byte)((m.TeamOnly ? 1 : 0) | (m.Dead ? 2 : 0))); w.String(m.Text ?? "");
+        }
+        public static ChatMessage ReadChat(NetReader r)
+        {
+            var m = new ChatMessage { SenderId = r.Byte(), SenderTeam = (Team)r.Byte() };
+            byte f = r.Byte();
+            m.TeamOnly = (f & 1) != 0; m.Dead = (f & 2) != 0;
+            m.Text = r.String();
+            return m;
+        }
 
         public static void WriteEvent(NetWriter w, in GameEvent e) { w.Byte((byte)Msg.Event); w.Byte((byte)e.Type); w.Int(e.A); w.Int(e.B); w.Vec3(e.Position); w.String(e.Text ?? ""); }
         public static GameEvent ReadEvent(NetReader r) => new GameEvent { Type = (GameEventType)r.Byte(), A = r.Int(), B = r.Int(), Position = r.Vec3(), Text = r.String() };

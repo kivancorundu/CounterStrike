@@ -10,6 +10,7 @@ namespace Vexa.Core
         Sand = 5,
         Tile = 6,
         Glass = 7,
+        Flesh = 8,   // other players (movement obstacles only)
     }
 
     public static class Surfaces

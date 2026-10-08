@@ -10,6 +10,15 @@ namespace Vexa.Core
         public ISimEvents Events;
         public MapData Map;
         public bool PlantAllowed = true;
+        /// <summary>Hulls of the other players; they block movement (not bullets).</summary>
+        public readonly System.Collections.Generic.List<StaticBox> Obstacles = new System.Collections.Generic.List<StaticBox>();
+
+        public static StaticBox HullOf(in PlayerState s) => new StaticBox
+        {
+            Min = new System.Numerics.Vector3(s.Position.X - SimConstants.HullHalfWidth, s.Position.Y, s.Position.Z - SimConstants.HullHalfWidth),
+            Max = new System.Numerics.Vector3(s.Position.X + SimConstants.HullHalfWidth, s.Position.Y + s.HullHeight, s.Position.Z + SimConstants.HullHalfWidth),
+            Material = SurfaceMaterial.Flesh,
+        };
     }
 
     /// <summary>
@@ -32,7 +41,11 @@ namespace Vexa.Core
             var def = s.ActiveDef;
             float maxSpeed = s.Zoom > 0 ? def.ScopedSpeed : def.MoveSpeed;
             if (s.Reloading) maxSpeed = def.MoveSpeed;
-            var ev = PlayerMovement.Simulate(ref s, cmd, ctx.Dt, time, ctx.World, maxSpeed, ctx.Frozen || s.Planting || s.Defusing);
+            MoveEvents ev;
+            ctx.World.Dynamic.Clear();
+            ctx.World.Dynamic.AddRange(ctx.Obstacles);
+            try { ev = PlayerMovement.Simulate(ref s, cmd, ctx.Dt, time, ctx.World, maxSpeed, ctx.Frozen || s.Planting || s.Defusing); }
+            finally { ctx.World.Dynamic.Clear(); }
             if (ev.Landed)
             {
                 int fall = PlayerMovement.FallDamage(ev.FallSpeed);
