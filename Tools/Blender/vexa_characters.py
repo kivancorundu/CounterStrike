@@ -291,6 +291,28 @@ def export_character(path, armature, body):
         bake_anim_simplify_factor=0.0)
 
 
+# first-person forearm directions (wrist -> elbow) in weapon space: down and back, out of the bottom corners of
+# the screen (the third-person pose holds the rifle at the chest; the view model holds it just under the eye)
+FP_FOREARM = {"Right": (-0.32, 0.6, -0.73), "Left": (0.42, 0.42, -0.8)}
+
+
+def bend_forearm(o, wrist, elbow, target_dir, blend=0.07):
+    """Swings the forearm (and the bit of upper arm) about the wrist so it points along target_dir; the hand
+    stays where it grips the weapon. The rotation fades in over `blend` meters above the wrist."""
+    from mathutils import Quaternion
+    w = Vector(wrist)
+    cur = (Vector(elbow) - w).normalized()
+    q = cur.rotation_difference(Vector(target_dir).normalized())
+    axis, angle = q.axis, q.angle
+    for v in o.data.vertices:
+        t = (v.co - w).dot(cur)
+        if t <= 0:
+            continue
+        k = min(1.0, t / blend)
+        k = k * k * (3 - 2 * k)
+        v.co = w + Quaternion(axis, angle * k) @ (v.co - w)
+
+
 def build_arms(faction, high, posed, out, textures):
     """First-person forearms cut from the high-poly character: sleeve, glove (and skin) from above the elbow to the
     fingertips. Each object's origin is the grip point of that hand; forward is -Y like the weapons."""
@@ -307,7 +329,7 @@ def build_arms(faction, high, posed, out, textures):
     for side, name in (("Right", "RightArm"), ("Left", "LeftArm")):
         sh, el = posed[side + "UpperArm"][0], posed[side + "LowerArm"][0]
         ht = posed[side + "Hand"][1]
-        a = el + (sh - el).normalized() * 0.07
+        a = el + (sh - el).normalized() * 0.045
         b = ht + (ht - posed[side + "Hand"][0]).normalized() * 0.07
         ab = np.array((b - a)[:])
         t = np.clip(((centers - np.array(a[:])) @ ab) / (ab @ ab), 0, 1)
@@ -322,6 +344,7 @@ def build_arms(faction, high, posed, out, textures):
         bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
         bm.to_mesh(src.data)
         bm.free()
+        bend_forearm(src, posed[side + "Hand"][0], el, FP_FOREARM[side])
         low = decimate(duplicate(src, name), ARM_TRIS)
         for vg in list(low.vertex_groups):
             low.vertex_groups.remove(vg)
@@ -388,11 +411,18 @@ def main():
     ap.add_argument("--preview", default="", help="render a preview sheet of the exported, textured characters")
     ap.add_argument("--textures", action="store_true", help="bake PBR textures (slow: 4K on the CPU)")
     ap.add_argument("--only", default="")
+    ap.add_argument("--arms-only", action="store_true", help="rebuild only the first-person arms")
     args = ap.parse_args([a for a in sys.argv[1:] if a != "--"])
     factions = [f for f in args.only.split(",") if f] or list(FACTIONS)
     for faction in factions:
+        if args.arms_only:
+            import vexa_factions
+            reset_scene()
+            high, layout, full, posed, jiggles = vexa_factions.build(faction)
+            build_arms(faction, high, posed, args.out, args.textures)
+            continue
         build_character(faction, args.out, args.textures)
-    if args.preview:
+    if args.preview and not args.arms_only:
         import vexa_preview
         vexa_preview.textured_character_sheet(os.path.join(args.out, "Characters"), factions, args.preview)
 
