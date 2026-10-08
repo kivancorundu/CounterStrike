@@ -36,7 +36,9 @@ DRAPE = dict(frames=40, stiffness=18.0, bending=0.6, mass=0.25, rings=2)
 DRAPE_PANTS = dict(frames=40, stiffness=22.0, bending=4.0, mass=0.3, rings=2, self_collision=True)
 
 # small round parts that read badly when decimated as hard as cloth (they keep ~10x the density)
-DETAIL_PARTS = ("MaskLens", "LensRim", "Voice", "Grill", "Filter", "Buckle", "QuickRelease", "Antenna")
+DETAIL_PARTS = ("MaskLens", "LensRim", "Voice", "Grill", "Filter", "Buckle", "QuickRelease", "Antenna",
+                # head layers are seen up close (and sit millimeters above the skin)
+                "Balaclava", "MaskBody", "Harness")
 
 
 def materials(faction):

@@ -825,7 +825,7 @@ class Outfit:
         m &= ~opening
         fold = lambda co, n, r: fabric_noise(co, 0.0006, 16, 9) + (folds_ring(co, self.P["Neck"], self.P["Head"], 0.04, 0.05, 0.02, 0.0035)
                                                                    if r.z < R["head"][2] + 0.01 else 0.0)
-        return self.garment("Balaclava", m, material, 0.0032, relax=2, sub=1, folds=fold, thick=0.002, min_gap=0.0028, erode=1, hug=0)
+        return self.garment("Balaclava", m, material, 0.0045, relax=2, sub=1, folds=fold, thick=0.002, min_gap=0.004, erode=1, hug=0)
 
     def face_shell(self, name, material, face_mask, keep, pad=0.012, thickness=0.006):
         """Smooth molded shell over the face: an ellipsoid fitted to the face region (cheeks to nose tip, brow to
