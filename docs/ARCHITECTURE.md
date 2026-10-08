@@ -136,7 +136,9 @@ Arayüz `Client/UI` altında tamamen C# ile kurulur. UXML/USS dosyası, sahne ve
      - Katman sırası: gömlek < pantolon < kemer < yelek < cep.
      - Botlar ayak ve bileğin dışbükey kabuklarından yeniden örülür (parmak izi kalmaz).
   4. Teçhizat ışın atışıyla yüzeye oturtulur. Sonuç ~0,5 milyon üçgenlik yüksek poligonlu kaynaktır.
-  5. Oyun mesh'i bundan seyreltilir (PC ~60 bin, mobil ~9 bin üçgen), katmanlar birbirine geçmesin diye düzeltilir.
+  5. Oyun mesh'i bundan seyreltilir (PC ~80 bin, mobil ~10 bin üçgen).
+     - Görünmeyen iç kabuklar atılır; küçük sert parçalar (mercek, toka) seyreltilmez.
+     - Katmanlar birbirine geçmesin diye düzeltilir.
      Ağırlıklar otomatik ağırlıklandırılmış gövdeden aktarılır, tüm dokular yüksek poligondan pişirilir.
   6. UV atlası seyreltmeden önce kurulur: gövde ve kıyafetler MakeHuman'ın vücut UV'sini kullanır, yüz ve eller daha fazla piksel alır.
 - **Karakter animasyonu** `PlayableGraph` ile yapılır (Animator Controller gerektirmez): klipler ağdan gelen hız, eğilme ve zemin durumuna göre karıştırılır.

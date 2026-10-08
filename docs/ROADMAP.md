@@ -37,10 +37,10 @@ Durum: ✅ bitti · 🔄 sürüyor · ⏳ sırada
 
 - ✅ **İki detay seviyesi:**
   - **Mobil:** orta poligon (CS 1.6 yoğunluğu ama yuvarlatılmış köşeler).
-    - Karakter yaklaşık 9 bin, silah 1–4 bin üçgen.
+    - Karakter yaklaşık 10 bin, silah 1–6 bin üçgen.
     - 256–1024 px renk ve metal/pürüzsüzlük dokusu.
   - **PC:** CS2 tarzı.
-    - Karakter yaklaşık 60 bin üçgen (yaklaşık 0,5 milyon üçgenlik yüksek poligondan pişirilir), silah 5–25 bin üçgen.
+    - Karakter yaklaşık 80 bin üçgen (yaklaşık 0,5 milyon üçgenlik yüksek poligondan pişirilir), silah 7–35 bin üçgen.
     - 4K PBR dokular: renk, metal/pürüzsüzlük, normal haritası.
     - Silahlarda aynı piksel yoğunluğu: tüfek / SMG / ağır silah 4K, tabanca ve bıçak 2K, bombalar 1K.
 - ✅ **Dokular Blender'da otomatik pişiriliyor** (`Tools/Blender/vexa_textures.py`):
