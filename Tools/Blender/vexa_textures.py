@@ -22,7 +22,9 @@ KIND_RULES = [
     ("Wood", "wood"),
     ("Grip", "grip"), ("Polymer", "polymer"), ("Tan", "polymer"), ("Olive", "polymer"), ("Accent", "polymer"), ("Red", "polymer"),
     ("_skin", "skin"), ("_sole", "rubber"), ("_boots", "leather"), ("_gloves", "leather"),
-    ("_jacket", "cloth"), ("_pants", "cloth"), ("_mask", "cloth"), ("_gear", "nylon"), ("_strap", "nylon"), ("_accent", "nylon"),
+    ("_eye", "eye"), ("_rubber", "rubber"), ("_belt", "leather"), ("_holster", "polymer"),
+    ("_jacket", "cloth"), ("_pants", "cloth"), ("_mask", "knit"), ("_scarf", "cloth"), ("_rag", "cloth"),
+    ("_gear", "nylon"), ("_strap", "nylon"), ("_accent", "nylon"),
     ("Cloth", "cloth"),
 ]
 
@@ -110,7 +112,86 @@ def worn_material(src, kind, scale_hint=1.0):
     base = mix_rgb(math("MULTIPLY", var.outputs["Fac"], 0.35), col, tuple(min(1, c * 1.25) for c in col))
     bump_h = None
 
-    if kind == "metal":
+    camo = src.get("camo")
+    if camo:
+        # multicam-like: base plus three layers of distorted blobs
+        cols = [tuple(c) for c in camo]
+        base = mix_rgb(math("MULTIPLY", var.outputs["Fac"], 0.2), cols[0], tuple(c * 1.1 for c in cols[0]))
+        for k, c in enumerate(cols[1:]):
+            n = noise((3.2 + k * 1.7) / scale_hint, 5, 0.62)
+            n.inputs["Distortion"].default_value = 1.2 + k * 0.4
+            n.noise_dimensions = "4D" if False else "3D"
+            L.new(tc.outputs["Object"], n.inputs["Vector"])
+            m_ = math("GREATER_THAN", n.outputs["Fac"], 0.56 + 0.03 * k)
+            base = mix_rgb(m_, base, c)
+
+    plaid = src.get("plaid")
+    if plaid:
+        # tartan flannel along the garment's body UVs: dark bands both ways, thin accent threads, twill grain
+        uvn = N.new("ShaderNodeUVMap")
+        uvn.uv_map = "mh"
+        sep = N.new("ShaderNodeSeparateXYZ")
+        L.new(uvn.outputs[0], sep.inputs[0])
+        cols = [tuple(c) for c in plaid]
+        def bands(coord, freq, width, offset=0.0):
+            f = math("FRACT", math("ADD", math("MULTIPLY", coord, freq, clamp=False), offset, clamp=False), None, clamp=False)
+            return math("LESS_THAN", math("ABSOLUTE", math("SUBTRACT", f, 0.5, clamp=False), None, clamp=False), width)
+        U, V = sep.outputs["X"], sep.outputs["Y"]
+        F = 22.0
+        du, dv = bands(U, F, 0.17), bands(V, F, 0.17)
+        tu, tv = bands(U, F, 0.035, 0.5), bands(V, F, 0.035, 0.5)
+        base = mix_rgb(math("MULTIPLY", var.outputs["Fac"], 0.25), cols[0], tuple(c * 0.92 for c in cols[0]))
+        base = mix_rgb(math("MULTIPLY", du, 0.72), base, cols[1])
+        base = mix_rgb(math("MULTIPLY", dv, 0.72), base, cols[1])
+        base = mix_rgb(math("MULTIPLY", math("MULTIPLY", du, dv), 0.6), base, tuple(c * 0.6 for c in cols[1]))
+        base = mix_rgb(math("MULTIPLY", math("MAXIMUM", tu, tv), 0.8), base, cols[2])
+        twill = N.new("ShaderNodeTexWave")
+        twill.wave_type = "BANDS"
+        twill.inputs["Scale"].default_value = 900
+        L.new(uvn.outputs[0], twill.inputs["Vector"])
+        base = mix_rgb(math("MULTIPLY", twill.outputs["Fac"], 0.12), base, tuple(c * 0.7 for c in cols[0]))
+
+    if kind == "knit":
+        # rib knit: vertical ribs along the body UVs plus stitch rows
+        uvn = N.new("ShaderNodeUVMap")
+        uvn.uv_map = "mh"
+        rib = N.new("ShaderNodeTexWave")
+        rib.bands_direction = "X"
+        rib.inputs["Scale"].default_value = 520
+        rib.inputs["Distortion"].default_value = 0.6
+        L.new(uvn.outputs[0], rib.inputs["Vector"])
+        st = N.new("ShaderNodeTexWave")
+        st.bands_direction = "Y"
+        st.inputs["Scale"].default_value = 1400
+        L.new(uvn.outputs[0], st.inputs["Vector"])
+        knit = math("MULTIPLY", rib.outputs["Fac"], math("ADD", math("MULTIPLY", st.outputs["Fac"], 0.5), 0.5))
+        base = mix_rgb(math("MULTIPLY", knit, 0.35), base, tuple(c * 0.55 for c in col))
+        fuzz = noise(2500, 2, 0.6)
+        base = mix_rgb(math("MULTIPLY", fuzz.outputs["Fac"], 0.15), base, tuple(min(1, c * 1.4) for c in col))
+        r = (min(1.0, rough + 0.05),) * 3
+        bump_h = math("ADD", math("MULTIPLY", knit, 0.7), math("MULTIPLY", fuzz.outputs["Fac"], 0.1))
+        metal_out = (0.0, 0.0, 0.0)
+    elif kind == "eye":
+        a = N.new("ShaderNodeAttribute")
+        a.attribute_name = "iris"
+        ir = a.outputs["Fac"]
+        veins = noise(300, 4, 0.7)
+        sclera = mix_rgb(math("MULTIPLY", veins.outputs["Fac"], 0.25), (0.78, 0.74, 0.7), (0.7, 0.42, 0.38))
+        fibers = N.new("ShaderNodeTexWave")
+        fibers.wave_type = "RINGS"
+        fibers.inputs["Scale"].default_value = 300
+        fibers.inputs["Distortion"].default_value = 12
+        L.new(tc.outputs["Object"], fibers.inputs["Vector"])
+        iris_c = mix_rgb(math("MULTIPLY", fibers.outputs["Fac"], 0.5), (0.22, 0.13, 0.06), (0.4, 0.27, 0.12))
+        base = mix_rgb(math("GREATER_THAN", ir, 0.86), sclera, iris_c)
+        base = mix_rgb(math("GREATER_THAN", ir, 0.965), base, (0.01, 0.01, 0.01))
+        # limbal ring
+        ring_ = math("MULTIPLY", math("GREATER_THAN", ir, 0.84), math("LESS_THAN", ir, 0.875))
+        base = mix_rgb(math("MULTIPLY", ring_, 0.7), base, (0.05, 0.04, 0.03))
+        r = (0.06, 0.06, 0.06)
+        bump_h = None
+        metal_out = (0.0, 0.0, 0.0)
+    elif kind == "metal":
         wear = math("MULTIPLY", edge, math("ADD", breakup.outputs["Fac"], 0.1))
         wear = math("GREATER_THAN", wear, 0.45)
         base = mix_rgb(wear, base, (0.52, 0.52, 0.54))
@@ -155,10 +236,36 @@ def worn_material(src, kind, scale_hint=1.0):
         bump_h = math("MULTIPLY", stip.outputs["Fac"], 0.5)
         metal_out = (0.0, 0.0, 0.0)
     elif kind == "skin":
-        pores = noise(700, 2, 0.5)
-        base = mix_rgb(math("MULTIPLY", var.outputs["Fac"], 0.25), base, (col[0] * 1.08, col[1] * 0.92, col[2] * 0.9))
-        r = (0.55, 0.55, 0.55)
-        bump_h = math("MULTIPLY", pores.outputs["Fac"], 0.08)
+        pores = noise(900, 2, 0.5)
+        tex_path = src.get("mh_texture")
+        if tex_path:
+            img = N.new("ShaderNodeTexImage")
+            img.image = bpy.data.images.load(tex_path, check_existing=True)
+            img.interpolation = "Cubic"
+            uvn = N.new("ShaderNodeUVMap")
+            uvn.uv_map = "mh"
+            L.new(uvn.outputs[0], img.inputs[0])
+            # weathered, slightly tanned
+            base = mix_rgb(0.25, img.outputs["Color"], (0.55, 0.38, 0.28), "MULTIPLY")
+            base = mix_rgb(math("MULTIPLY", var.outputs["Fac"], 0.3), base, (0.5, 0.3, 0.24))
+        else:
+            base = mix_rgb(math("MULTIPLY", var.outputs["Fac"], 0.25), base, (col[0] * 1.08, col[1] * 0.92, col[2] * 0.9))
+        def attr(name):
+            a = N.new("ShaderNodeAttribute")
+            a.attribute_name = name
+            return a.outputs["Fac"]
+        speck = noise(1400, 2, 0.6)
+        stub = math("MULTIPLY", attr("beard"), math("ADD", math("MULTIPLY", speck.outputs["Fac"], 0.8), 0.25))
+        base = mix_rgb(math("MULTIPLY", stub, 0.75), base, (0.08, 0.07, 0.065))
+        strands = N.new("ShaderNodeTexWave")
+        strands.inputs["Scale"].default_value = 160
+        strands.inputs["Distortion"].default_value = 18
+        L.new(tc.outputs["Object"], strands.inputs["Vector"])
+        hair = math("MULTIPLY", attr("hair"), math("ADD", math("MULTIPLY", strands.outputs["Fac"], 0.35), 0.65))
+        base = mix_rgb(hair, base, (0.045, 0.035, 0.028))
+        base = mix_rgb(math("MULTIPLY", attr("brow"), 0.85), base, (0.05, 0.035, 0.025))
+        r = (0.48, 0.48, 0.48)
+        bump_h = math("ADD", math("MULTIPLY", pores.outputs["Fac"], 0.12), math("MULTIPLY", hair, 0.2))
         metal_out = (0.0, 0.0, 0.0)
     elif kind == "glass":
         r = (0.05, 0.05, 0.05)
@@ -173,6 +280,12 @@ def worn_material(src, kind, scale_hint=1.0):
 
     # grime in crevices, a little dust overall
     base = mix_rgb(math("SUBTRACT", 1.0, grime), base, tuple(c * 0.45 for c in col), "MIX")
+    if kind in ("cloth", "nylon", "leather", "rubber"):
+        # dust collects low on the legs and boots
+        sep = N.new("ShaderNodeSeparateXYZ")
+        L.new(geo.outputs["Position"], sep.inputs[0])
+        dust = math("MULTIPLY", math("SUBTRACT", 1.0, math("MULTIPLY", sep.outputs["Z"], 2.2)), math("ADD", math("MULTIPLY", breakup.outputs["Fac"], 0.7), 0.1))
+        base = mix_rgb(math("MULTIPLY", dust, (0.4 if kind in ("cloth", "nylon") else 0.18) if scale_hint > 1.2 else 0.0), base, (0.42, 0.36, 0.28))
     L.new(base, bsdf.inputs["Base Color"])
     if isinstance(r, tuple):
         bsdf.inputs["Roughness"].default_value = r[0]
@@ -196,13 +309,59 @@ def worn_material(src, kind, scale_hint=1.0):
     return m, bsdf, out
 
 
-def _unwrap(obj):
+def _unwrap(obj, boost=None):
+    """Smart UV project. boost(face_center) -> scale factor gives chosen regions (faces) more texels."""
     bpy.ops.object.select_all(action="DESELECT")
     obj.select_set(True)
     bpy.context.view_layer.objects.active = obj
+    if obj.data.uv_layers.get("atlas") is None:
+        obj.data.uv_layers.new(name="atlas")
+    obj.data.uv_layers.active = obj.data.uv_layers["atlas"]
     bpy.ops.object.mode_set(mode="EDIT")
     bpy.ops.mesh.select_all(action="SELECT")
-    bpy.ops.uv.smart_project(angle_limit=1.15, island_margin=0.004, area_weight=0.0, correct_aspect=True, scale_to_bounds=False)
+    bpy.ops.uv.smart_project(angle_limit=1.15, island_margin=0.003, area_weight=0.0, correct_aspect=True, scale_to_bounds=False)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    if boost is not None:
+        import bmesh
+        bm = bmesh.new()
+        bm.from_mesh(obj.data)
+        uv = bm.loops.layers.uv["atlas"]
+        bm.faces.ensure_lookup_table()
+        # islands: flood fill over shared UV edges
+        seen = set()
+        for f in bm.faces:
+            if f.index in seen:
+                continue
+            k = boost(f.calc_center_median())
+            stack, island = [f], []
+            seen.add(f.index)
+            while stack:
+                g = stack.pop()
+                island.append(g)
+                for l in g.loops:
+                    for e_f in l.edge.link_faces:
+                        if e_f.index in seen:
+                            continue
+                        # same island if the UVs of the shared edge match
+                        a0, a1 = l[uv].uv, l.link_loop_next[uv].uv
+                        ok = False
+                        for l2 in e_f.loops:
+                            if l2.edge == l.edge:
+                                b0, b1 = l2[uv].uv, l2.link_loop_next[uv].uv
+                                ok = ((a0 - b1).length < 1e-5 and (a1 - b0).length < 1e-5) or ((a0 - b0).length < 1e-5 and (a1 - b1).length < 1e-5)
+                        if ok:
+                            seen.add(e_f.index)
+                            stack.append(e_f)
+            if k != 1.0:
+                for g in island:
+                    for l in g.loops:
+                        l[uv].uv *= k
+        bm.to_mesh(obj.data)
+        bm.free()
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.select_all(action="SELECT")
+    bpy.ops.uv.pack_islands(rotate=True, margin=0.002)
     bpy.ops.object.mode_set(mode="OBJECT")
 
 
@@ -213,50 +372,98 @@ def _image(name, size, non_color, alpha=False):
     return img
 
 
-def bake_model(obj, out_dir, name, size, normal=True, scale_hint=1.0, samples=12):
-    """UV-unwraps, bakes the textures for `obj` and gives it one textured material. Returns written paths."""
+def _save(img, path, jpeg=False, quality=92):
+    """PNG, or JPEG through Pillow (much smaller for 4K color/normal maps)."""
+    if not jpeg:
+        img.filepath_raw = path
+        img.file_format = "PNG"
+        img.save()
+        return path
+    from PIL import Image
+    w, h = img.size
+    px = np.array(img.pixels[:], dtype=np.float32).reshape(h, w, 4)[::-1, :, :3]
+    Image.fromarray((np.clip(px, 0, 1) * 255 + 0.5).astype(np.uint8)).save(path, quality=quality, subsampling=0)
+    return path
+
+
+def bake_model(obj, out_dir, name, size, normal=True, scale_hint=1.0, samples=12, source=None, extrusion=0.012,
+               jpeg=False, boost=None, keep_uv=False):
+    """Bakes the textures for `obj` and gives it one textured material. Returns written paths.
+
+    source: a high-poly object with the original materials: everything (color, roughness, metal, normals) is
+    baked from it onto obj's new UVs (selected-to-active). Without it obj bakes from its own materials.
+    jpeg: write albedo and normal as high-quality JPEG (4K sources stay small); the mask is always PNG (alpha)."""
     sc = bpy.context.scene
     sc.render.engine = "CYCLES"
     sc.cycles.device = "CPU"
     sc.cycles.samples = samples
     sc.cycles.use_denoising = False
-    _unwrap(obj)
+    if not keep_uv:
+        _unwrap(obj, boost)
+    obj.data.uv_layers.active = obj.data.uv_layers["atlas"]
+    obj.data.uv_layers["atlas"].active_render = True
+    src_obj = source or obj
+    if src_obj.data.uv_layers.get("atlas") is None:
+        src_obj.data.uv_layers.new(name="atlas")
+    if source is not None:
+        source.data.uv_layers.active = source.data.uv_layers["atlas"]
 
-    # swap in procedural materials, each with an image node (the bake target) selected
-    originals = list(obj.data.materials)
+    # swap in procedural materials on the source (restored afterwards, so the same source can be baked again)
+    originals = list(src_obj.data.materials)
     procs = []
-    for i, src in enumerate(originals):
+    done = {}
+    for i, src in enumerate(list(src_obj.data.materials)):
         if src is None:
             continue
-        pm, bsdf, out = worn_material(src, kind_of(src.name), scale_hint)
-        obj.data.materials[i] = pm
-        procs.append((pm, bsdf, out))
+        if src.name not in done:
+            done[src.name] = worn_material(src, kind_of(src.name), scale_hint)
+        pm, bsdf, out = done[src.name]
+        src_obj.data.materials[i] = pm
+        if (pm, bsdf, out) not in procs:
+            procs.append((pm, bsdf, out))
+    # bake target nodes live in the target's materials
+    if source is not None:
+        tgt = bpy.data.materials.new(name + "_bake")
+        tgt.use_nodes = True
+        for i in range(len(obj.data.materials)):
+            obj.data.materials[i] = tgt
+        if not obj.data.materials:
+            obj.data.materials.append(tgt)
+        targets = [tgt]
+    else:
+        targets = [pm for pm, _, _ in procs]
 
     def set_target(img):
-        for pm, _, _ in procs:
-            nodes = pm.node_tree.nodes
-            t = nodes.get("BakeTarget") or nodes.new("ShaderNodeTexImage")
-            t.name = "BakeTarget"
-            t.image = img
-            nodes.active = t
+        for t in targets:
+            nodes = t.node_tree.nodes
+            n = nodes.get("BakeTarget") or nodes.new("ShaderNodeTexImage")
+            n.name = "BakeTarget"
+            n.image = img
+            nodes.active = n
 
     bake = sc.render.bake
     bake.margin = max(4, size // 128)
+    bake.use_selected_to_active = source is not None
+    bake.cage_extrusion = extrusion
+    bake.max_ray_distance = extrusion * 2.5
+    bpy.ops.object.select_all(action="DESELECT")
+    if source is not None:
+        source.hide_render = False
+        source.select_set(True)
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    kw = dict(use_clear=True, margin=bake.margin, use_selected_to_active=source is not None,
+              cage_extrusion=extrusion, max_ray_distance=extrusion * 2.5)
     written = []
     os.makedirs(out_dir, exist_ok=True)
 
-    # albedo
     albedo = _image(name + "_albedo", size, False)
     set_target(albedo)
-    bake.use_pass_direct = False
-    bake.use_pass_indirect = False
-    bake.use_pass_color = True
-    bpy.ops.object.bake(type="DIFFUSE", pass_filter={"COLOR"}, use_clear=True, margin=bake.margin)
-    # roughness
+    bpy.ops.object.bake(type="DIFFUSE", pass_filter={"COLOR"}, **kw)
     roughness = _image(name + "_rough", size, True)
     set_target(roughness)
-    bpy.ops.object.bake(type="ROUGHNESS", use_clear=True, margin=bake.margin)
-    # metallic: route each material's metallic signal into emission for one pass
+    sc.cycles.samples = max(2, samples // 3)
+    bpy.ops.object.bake(type="ROUGHNESS", **kw)
     metal = _image(name + "_metal", size, True)
     set_target(metal)
     saved = []
@@ -270,39 +477,35 @@ def bake_model(obj, out_dir, name, size, normal=True, scale_hint=1.0, samples=12
         old = out.inputs[0].links[0].from_socket
         nt.links.new(emit.outputs[0], out.inputs[0])
         saved.append((nt, old, out))
-    bpy.ops.object.bake(type="EMIT", use_clear=True, margin=bake.margin)
+    bpy.ops.object.bake(type="EMIT", **kw)
     for nt, old, out in saved:
         nt.links.new(old, out.inputs[0])
-    # normal
+    sc.cycles.samples = samples
     normal_img = None
     if normal:
         normal_img = _image(name + "_normal", size, True)
         set_target(normal_img)
-        bpy.ops.object.bake(type="NORMAL", normal_space="TANGENT", use_clear=True, margin=bake.margin)
+        bpy.ops.object.bake(type="NORMAL", normal_space="TANGENT", **kw)
 
-    def save(img, path):
-        img.filepath_raw = path
-        img.file_format = "PNG"
-        img.save()
-        written.append(path)
-
-    save(albedo, os.path.join(out_dir, name + "_albedo.png"))
-    # mask: R metallic, G/B unused, A smoothness (1 - roughness)
+    ext = ".jpg" if jpeg else ".png"
+    written.append(_save(albedo, os.path.join(out_dir, name + "_albedo" + ext), jpeg))
     w = h = size
     r = np.array(roughness.pixels[:], dtype=np.float32).reshape(h, w, 4)[..., 0]
     mtl = np.array(metal.pixels[:], dtype=np.float32).reshape(h, w, 4)[..., 0]
     mask = np.zeros((h, w, 4), dtype=np.float32)
     mask[..., 0] = mtl
     mask[..., 1] = 1.0
-    mask[..., 2] = 0.0
     mask[..., 3] = 1.0 - r
     mask_img = _image(name + "_mask", size, True, alpha=True)
     mask_img.pixels[:] = mask.ravel()
-    save(mask_img, os.path.join(out_dir, name + "_mask.png"))
+    written.append(_save(mask_img, os.path.join(out_dir, name + "_mask.png")))
     if normal_img is not None:
-        save(normal_img, os.path.join(out_dir, name + "_normal.png"))
+        written.append(_save(normal_img, os.path.join(out_dir, name + "_normal" + ext), jpeg))
 
-    # one simple material for export (albedo on the base color) — the game assigns all maps at runtime
+    if source is not None:
+        for i, m_ in enumerate(originals):
+            source.data.materials[i] = m_
+    # one simple material for export (albedo on the base color): the game assigns all maps at runtime
     final = bpy.data.materials.new(name)
     final.use_nodes = True
     fb = final.node_tree.nodes.get("Principled BSDF")
@@ -313,4 +516,8 @@ def bake_model(obj, out_dir, name, size, normal=True, scale_hint=1.0, samples=12
     obj.data.materials.append(final)
     for poly in obj.data.polygons:
         poly.material_index = 0
+    # the export keeps only the atlas UVs
+    for uvl in [u for u in obj.data.uv_layers if u.name != "atlas"]:
+        obj.data.uv_layers.remove(uvl)
+    bake.use_selected_to_active = False
     return written

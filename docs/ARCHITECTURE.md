@@ -121,13 +121,23 @@ Arayüz `Client/UI` altında tamamen C# ile kurulur. UXML/USS dosyası, sahne ve
 
 ## Görseller ve ses
 
-- **Modeller** `Tools/Blender` script'leriyle üretilip `Resources/Models` altına FBX olarak yazılır. Mobil sürüm orta poligonlu ayrı dosyalardır.
-  - Dokular modelle birlikte pişirilir: `Textures/<ad>_albedo.png`, `_mask.png` (R metal, A pürüzsüzlük), `_normal.png` (sadece PC).
+- **Modeller** `Tools/Blender` script'leriyle üretilip `Resources/Models` altına FBX olarak yazılır. Mobil sürüm ayrı, daha düşük poligonlu dosyalardır.
+  - Dokular modelle birlikte pişirilir: `Textures/<ad>_albedo`, `_mask.png` (R metal, A pürüzsüzlük), `_normal` (sadece PC).
+    - PC'de albedo ve normal 4K JPEG'dir (depo boyutu için), maske PNG'dir.
   - Oyun bunlardan çalışma anında URP Lit malzemesi kurar.
-  - `Editor/VexaModelImport.cs` içe aktarma ayarlarını otomatik yapar: normal haritası, doğrusal maske, döngüye giren animasyonlar.
+  - `Editor/VexaModelImport.cs` içe aktarma ayarlarını otomatik yapar: normal haritası, doğrusal maske, PC'de 4K (mobil platformlarda 1K), döngüye giren animasyonlar.
   - `ModelLibrary` bunları yükler. Model yoksa ilkel şekillere geri düşülür; oyun yine çalışır.
+- **Karakter hattı (v3)** (`vexa_human` → `vexa_outfit` → `vexa_factions` → `vexa_characters`):
+  1. MakeHuman'ın CC0 temel insan mesh'i morph hedefleriyle iri yapılı bir askere şekillenir.
+  2. Geçici bir iskeletle nişan pozuna getirilir: iki kemikli IK ile eller kabza ve el kundağında, parmaklar silahı kavrar.
+  3. Kıyafetler gövdeden kesilir, şişirilir, pürüzsüzleştirilir; kırışık, dikiş ve katmanlar (gömlek < pantolon < kemer < yelek < cep) eklenir.
+  4. Teçhizat ışın atışıyla yüzeye oturtulur. Sonuç ~0,5 milyon üçgenlik yüksek poligonlu kaynaktır.
+  5. Oyun mesh'i bundan seyreltilir (PC ~60 bin, mobil ~9 bin üçgen), katmanlar birbirine geçmesin diye düzeltilir.
+     Ağırlıklar otomatik ağırlıklandırılmış gövdeden aktarılır, tüm dokular yüksek poligondan pişirilir.
+  6. UV atlası seyreltmeden önce kurulur: gövde ve kıyafetler MakeHuman'ın vücut UV'sini kullanır, yüz ve eller daha fazla piksel alır.
 - **Karakter animasyonu** `PlayableGraph` ile yapılır (Animator Controller gerektirmez): klipler ağdan gelen hız, eğilme ve zemin durumuna göre karıştırılır.
-  - Nişan için göğüs kemiği eğilir. Silah sağ el kemiğine yerleşir.
+  - Nişan için göğüs kemiği eğilir. Silah `RightGrip` kemiğine (sağ elin kavrama noktası) yerleşir.
+  - **Kıyafet fiziği** (`Art/SpringBones`): `Jiggle_*` kemikleri (telsiz anteni, boşaltma çantası, bacak kılıfı, kayış uçları, bez) yay benzetimiyle gövdenin hareketine gecikmeyle uyar, yerçekimiyle sallanır.
 - **Birinci şahıs** (`ViewModel`): silah ve kollar 1/4 ölçekte, kameraya 4 kat daha yakın çizilir. Görüntü aynıdır ama model oyuncunun kendi gövdesinin içinde kalır, duvara girmez.
 - **Ses** (`Audio/SoundSynth`, `GameAudio`): şimdilik tüm sesler kodla sentezlenir ve 3B konumsal çalınır. Ses paketi gelince aynı isimlerle değiştirilecek.
 

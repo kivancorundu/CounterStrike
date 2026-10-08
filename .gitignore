@@ -16,3 +16,7 @@ Game/.vs/
 .DS_Store
 *.log
 node_modules/
+
+# Python bytecode (Tools/Blender)
+__pycache__/
+*.pyc

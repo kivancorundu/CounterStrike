@@ -1,18 +1,21 @@
 """
-VEXA characters: two original factions, rigged, with animation clips, plus first-person arms.
+VEXA characters (v3): realistic bodies with fitted clothing and gear, rigged, animated, with secondary motion,
+plus first-person arms.
 
-    python vexa_characters.py --out ../../Game/Assets/Vexa/Resources/Models [--preview sheet.png]
+    python vexa_characters.py --out ../../Game/Assets/Vexa/Resources/Models [--textures] [--preview sheet.png]
 
-    Characters/<faction>.fbx         third-person body (armature + mesh + clips)
-    Characters/Mobile/<faction>.fbx  low-poly version
-    Arms/<faction>.fbx               first-person forearms: objects "RightArm" and "LeftArm", hand at each origin
+    Characters/<faction>.fbx          PC: ~60k triangles, 4K textures (JPEG albedo/normal + PNG mask)
+    Characters/Mobile/<faction>.fbx   mobile: ~9k triangles, 1K textures
+    Arms/<faction>.fbx                first-person forearms: objects "RightArm" and "LeftArm", the grip point at each origin
 
-Factions:  "akinci" (attackers, T)  sand jacket, balaclava and cap, amber details
-           "muhafiz" (defenders, CT) navy uniform, helmet with visor, plate carrier, blue details
+Pipeline (see vexa_human, vexa_outfit, vexa_factions): MakeHuman CC0 body shaped into a heavily built soldier and
+posed into the aiming pose -> clothing and gear built on it as a high-poly source (~0.5M triangles) -> game meshes
+decimated from it -> weights transferred from the automatically weighted body -> every texture baked from the
+high-poly source onto the game mesh (cloth folds, seams, webbing, wear and dirt end up in the maps).
 
-The rest pose IS the aiming pose the server's hitboxes assume (Core/Combat/Hitboxes.cs): 1.83 m tall,
-head center at ~1.69 m, arms forward holding a rifle. Skinning is rigid (each part follows one bone),
-which suits the stylized low-poly look and keeps hitboxes and visuals in agreement.
+The rest pose IS the aiming pose the server's hitboxes assume (Core/Combat/Hitboxes.cs): ~1.83 m tall with boots,
+head center ~1.69 m, arms forward holding a rifle. Bones: the 17 game bones (names below), "RightGrip"/"LeftGrip"
+(weapon attachment points, no skin) and "Jiggle_*" bones for loose parts, swung by Client/Art/SpringBones.cs.
 """
 import argparse
 import math
@@ -21,146 +24,31 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bpy
-from mathutils import Vector, Euler
-from vexa_common import (DETAIL, set_detail, reset_scene, box, cyl, sphere, join, apply_modifiers, custom_mat, mat, tri_count)
+import numpy as np
+from mathutils import Euler, Vector
+
+from vexa_common import reset_scene, tri_count
 
 FPS = 24
-
-# bone: (head, tail, parent) in Blender space (forward -Y, right -X, up +Z)
-BONES = {
-    "Hips": ((0, 0, 0.96), (0, 0, 1.06), None),
-    "Spine": ((0, 0, 1.06), (0, 0, 1.22), "Hips"),
-    "Chest": ((0, 0, 1.22), (0, 0, 1.45), "Spine"),
-    "Neck": ((0, -0.01, 1.48), (0, -0.02, 1.58), "Chest"),
-    "Head": ((0, -0.02, 1.58), (0, -0.03, 1.82), "Neck"),
-    "RightUpperArm": ((-0.2, 0.0, 1.43), (-0.24, -0.12, 1.2), "Chest"),
-    "RightLowerArm": ((-0.24, -0.12, 1.2), (-0.06, -0.34, 1.19), "RightUpperArm"),
-    "RightHand": ((-0.06, -0.34, 1.19), (-0.03, -0.42, 1.19), "RightLowerArm"),
-    "LeftUpperArm": ((0.2, 0.0, 1.43), (0.19, -0.24, 1.23), "Chest"),
-    "LeftLowerArm": ((0.19, -0.24, 1.23), (0.03, -0.53, 1.24), "LeftUpperArm"),
-    "LeftHand": ((0.03, -0.53, 1.24), (0.0, -0.61, 1.24), "LeftLowerArm"),
-    "RightUpperLeg": ((-0.1, 0, 0.94), (-0.1, -0.01, 0.52), "Hips"),
-    "RightLowerLeg": ((-0.1, -0.01, 0.52), (-0.1, 0.02, 0.1), "RightUpperLeg"),
-    "RightFoot": ((-0.1, 0.02, 0.1), (-0.1, -0.12, 0.03), "RightLowerLeg"),
-    "LeftUpperLeg": ((0.1, 0, 0.94), (0.1, -0.01, 0.52), "Hips"),
-    "LeftLowerLeg": ((0.1, -0.01, 0.52), (0.1, 0.02, 0.1), "LeftUpperLeg"),
-    "LeftFoot": ((0.1, 0.02, 0.1), (0.1, -0.12, 0.03), "LeftLowerLeg"),
-}
-
-FACTIONS = {
-    "akinci": dict(
-        top=(0.52, 0.42, 0.29), pants=(0.25, 0.25, 0.2), boots=(0.22, 0.15, 0.09), gear=(0.18, 0.17, 0.13),
-        gloves=(0.1, 0.1, 0.1), mask=(0.09, 0.09, 0.1), accent=(0.95, 0.64, 0.23), headgear="cap", vest=False),
-    "muhafiz": dict(
-        top=(0.12, 0.15, 0.22), pants=(0.15, 0.18, 0.25), boots=(0.07, 0.07, 0.08), gear=(0.2, 0.23, 0.28),
-        gloves=(0.08, 0.08, 0.09), mask=(0.55, 0.42, 0.33), accent=(0.35, 0.69, 1.0), headgear="helmet", vest=True),
-}
+FACTIONS = ("akinci", "muhafiz")
+LOD = {"pc": dict(tris=60000, tex=4096, jpeg=True, normal=True), "mobile": dict(tris=9000, tex=1024, jpeg=False, normal=False)}
+ARM_TRIS = 16000
+ARM_TEX = 2048
 
 
-def tag(o, bone):
-    """Rigid skinning: every vertex of this part follows one bone."""
-    vg = o.vertex_groups.new(name=bone)
-    vg.add(list(range(len(o.data.vertices))), 1.0, "REPLACE")
-    return o
-
-
-def limb(name, a, b, r1, r2, material, bone, parts):
-    parts.append(tag(_applied(cyl(name, a, b, r1, material, r2=r2)), bone))
-    parts.append(tag(_applied(sphere(name + "J", a, r1 * 0.98, material, segments=max(8, DETAIL["cyl"] // 2 + 4))), bone))
-
-
-def _applied(o):
-    apply_modifiers(o)
-    return o
-
-
-def rounded(name, center, size, material, bone, parts, bevel=None, rot=(0, 0, 0)):
-    o = box(name, center, size, material, bevel_width=bevel if bevel is not None else min(size) * 0.3, rot=rot)
-    o.modifiers["Bevel"].segments = DETAIL["segments"] + 1
-    apply_modifiers(o)
-    parts.append(tag(o, bone))
-    return o
-
-
-def build_body(faction):
-    f = FACTIONS[faction]
-    p = faction.capitalize()
-    M = lambda key, metal=0.0, rough=0.8: custom_mat(f"{p}_{key}", f[key], metal, rough)
-    top, pants, boots, gear, gloves, mask, accent = M("top"), M("pants"), M("boots"), M("gear"), M("gloves"), M("mask"), M("accent", rough=0.5)
-    parts = []
-    # ---- legs ----
-    for s, side in ((-1, "Right"), (1, "Left")):
-        x = 0.1 * s
-        limb(f"{side}Thigh", (x, 0, 0.92), (x, -0.01, 0.52), 0.088, 0.066, pants, f"{side}UpperLeg", parts)
-        limb(f"{side}Shin", (x, -0.01, 0.52), (x, 0.02, 0.13), 0.064, 0.05, pants, f"{side}LowerLeg", parts)
-        rounded(f"{side}Boot", (x, -0.03, 0.065), (0.11, 0.27, 0.13), boots, f"{side}Foot", parts, 0.03)
-        rounded(f"{side}BootTop", (x, 0.02, 0.15), (0.115, 0.13, 0.1), boots, f"{side}LowerLeg", parts, 0.03)
-        if f["vest"]:
-            rounded(f"{side}KneePad", (x, -0.07, 0.52), (0.1, 0.05, 0.12), gear, f"{side}LowerLeg", parts, 0.02)
-        else:
-            rounded(f"{side}Pocket", (x + 0.06 * s, -0.01, 0.72), (0.03, 0.12, 0.13), pants, f"{side}UpperLeg", parts, 0.012)
-    # ---- torso ----
-    rounded("Pelvis", (0, 0.0, 0.98), (0.34, 0.22, 0.2), pants, "Hips", parts, 0.06)
-    rounded("Belt", (0, 0.0, 1.06), (0.35, 0.225, 0.05), gear, "Hips", parts, 0.015)
-    rounded("Belly", (0, 0.0, 1.16), (0.33, 0.21, 0.2), top, "Spine", parts, 0.07)
-    rounded("Torso", (0, 0.0, 1.345), (0.4, 0.24, 0.31), top, "Chest", parts, 0.08)
-    if f["vest"]:
-        rounded("Plate", (0, -0.025, 1.28), (0.37, 0.24, 0.32), gear, "Chest", parts, 0.03)
-        for i, x in enumerate((-0.1, 0.0, 0.1)):
-            rounded(f"MagPouch{i}", (x, -0.15, 1.2), (0.08, 0.05, 0.12), gear, "Chest", parts, 0.012)
-        rounded("Radio", (0.14, 0.13, 1.3), (0.06, 0.05, 0.16), mat("Polymer"), "Chest", parts, 0.01)
-        rounded("Patch", (0.21, -0.02, 1.38), (0.005, 0.07, 0.05), accent, "Chest", parts, 0.002)
-        rounded("Backpack", (0, 0.16, 1.3), (0.3, 0.1, 0.3), gear, "Chest", parts, 0.03)
-    else:
-        rounded("Collar", (0, 0.0, 1.47), (0.24, 0.18, 0.06), top, "Chest", parts, 0.025)
-        rounded("ChestRig", (0, -0.13, 1.2), (0.3, 0.05, 0.12), gear, "Chest", parts, 0.015)
-        rounded("Strap", (0.0, -0.125, 1.32), (0.05, 0.02, 0.33), gear, "Chest", parts, 0.008, rot=(0, math.radians(35), 0))
-        rounded("Stripe", (0.205, -0.0, 1.4), (0.005, 0.12, 0.025), accent, "Chest", parts, 0.002)
-        rounded("SlingBag", (-0.16, 0.13, 1.08), (0.08, 0.1, 0.16), gear, "Hips", parts, 0.02)
-    # ---- arms (aiming pose) ----
-    for side in ("Right", "Left"):
-        ua, la, hand = BONES[f"{side}UpperArm"], BONES[f"{side}LowerArm"], BONES[f"{side}Hand"]
-        limb(f"{side}Upper", ua[0], ua[1], 0.062, 0.052, top, f"{side}UpperArm", parts)
-        limb(f"{side}Fore", la[0], la[1], 0.05, 0.042, top, f"{side}LowerArm", parts)
-        h = Vector(hand[0]) + (Vector(hand[1]) - Vector(hand[0])) * 0.4
-        rounded(f"{side}Glove", tuple(h), (0.075, 0.1, 0.05), gloves, f"{side}Hand", parts, 0.02)
-        rounded(f"{side}Shoulder", (ua[0][0], 0.0, 1.42), (0.13, 0.15, 0.1), gear if f["vest"] else top, "Chest", parts, 0.04)
-    # ---- neck & head (head center ~1.69 m, matches the head hitbox) ----
-    limb("NeckPart", (0, -0.01, 1.49), (0, -0.02, 1.6), 0.068, 0.06, mask if not f["vest"] else top, "Neck", parts)
-    head = _applied(sphere("HeadBall", (0, -0.035, 1.69), 0.11, mask, scale=(0.9, 0.98, 1.05)))
-    parts.append(tag(head, "Head"))
-    # jaw + chin, so the neck doesn't read as a stalk
-    jaw = _applied(sphere("Jaw", (0, -0.055, 1.615), 0.078, mask, scale=(1.0, 1.05, 0.85)))
-    parts.append(tag(jaw, "Head"))
-    if f["vest"]:
-        rounded("Collar", (0, 0.0, 1.49), (0.25, 0.19, 0.06), top, "Chest", parts, 0.025)
-    if f["headgear"] == "helmet":
-        helmet = _applied(sphere("Helmet", (0, -0.03, 1.72), 0.128, gear, scale=(0.95, 1.05, 0.85)))
-        parts.append(tag(helmet, "Head"))
-        rounded("Visor", (0, -0.135, 1.69), (0.17, 0.03, 0.07), mat("Lens"), "Head", parts, 0.012)
-        rounded("HelmetRail", (0.12, -0.03, 1.7), (0.012, 0.12, 0.025), mat("Polymer"), "Head", parts, 0.004)
-        rounded("NVGMount", (0, -0.13, 1.79), (0.05, 0.03, 0.04), mat("Polymer"), "Head", parts, 0.008)
-    else:
-        cap = _applied(sphere("Cap", (0, -0.025, 1.745), 0.112, gear, scale=(0.95, 1.0, 0.6)))
-        parts.append(tag(cap, "Head"))
-        rounded("Brim", (0, -0.135, 1.75), (0.15, 0.09, 0.012), gear, "Head", parts, 0.004, rot=(math.radians(-8), 0, 0))
-        rounded("Goggles", (0, -0.12, 1.705), (0.17, 0.03, 0.045), mat("Lens"), "Head", parts, 0.012)
-        rounded("GoggleStrap", (0, -0.03, 1.705), (0.205, 0.17, 0.02), accent, "Head", parts, 0.008)
-    body = join(parts, faction + "_body")
-    return body
-
-
-def build_armature(name):
+def build_armature(name, layout):
+    """layout: bone -> (head, tail, parent)."""
     arm = bpy.data.armatures.new(name)
     obj = bpy.data.objects.new(name, arm)
     bpy.context.collection.objects.link(obj)
     bpy.context.view_layer.objects.active = obj
     bpy.ops.object.mode_set(mode="EDIT")
     eb = {}
-    for b, (h, t, parent) in BONES.items():
+    for b, (h, t, parent) in layout.items():
         e = arm.edit_bones.new(b)
-        e.head, e.tail = h, t
+        e.head, e.tail = Vector(h), Vector(t)
         e.roll = 0
+        e.use_deform = not b.endswith("Grip")
         if parent:
             e.parent = eb[parent]
             e.use_connect = False
@@ -248,22 +136,153 @@ def make_clips(arm):
     return clips
 
 
+
 # ---------------------------------------------------------------- assembly
 
-def build_character(faction):
-    """v2: continuous skinned body (vexa_body) with automatic weights and layered gear."""
-    import vexa_body
-    armature = build_armature(faction)
-    body = vexa_body.build_body_v2(faction, FACTIONS[faction], armature)
-    return armature, body
+def _select(objs, active):
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in objs:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = active
+
+
+def _apply_mods(o):
+    _select([o], o)
+    for m in list(o.modifiers):
+        bpy.ops.object.modifier_apply(modifier=m.name)
+
+
+def duplicate(o, name):
+    c = o.copy()
+    c.data = o.data.copy()
+    c.name = name
+    c.data.name = name
+    bpy.context.collection.objects.link(c)
+    return c
+
+
+def decimate(o, tris):
+    """Collapse decimation to ~tris triangles; vertices in the "detail" group (small hard parts) are protected."""
+    cur = tri_count(o)
+    if cur > tris:
+        tri = o.modifiers.new("Tri", "TRIANGULATE")
+        d = o.modifiers.new("Decimate", "DECIMATE")
+        d.ratio = tris / cur
+        d.use_collapse_triangulate = True
+        if o.vertex_groups.get("detail") is not None:
+            d.vertex_group = "detail"
+            d.invert_vertex_group = True
+            d.vertex_group_factor = 1.0
+        _apply_mods(o)
+    if o.vertex_groups.get("detail") is not None:
+        o.vertex_groups.remove(o.vertex_groups["detail"])
+    for p in o.data.polygons:
+        p.use_smooth = True
+    return o
+
+
+def fix_layers(low, gap=0.0025):
+    """Decimation moves surfaces by a few millimeters, enough for stacked layers (shirt / vest / pouch) to cut into
+    each other. Each part (by its "layer" index) is pushed back above everything worn below it."""
+    import bmesh
+    from mathutils.bvhtree import BVHTree
+    a = low.data.attributes.get("layer")
+    if a is None:
+        return
+    layer = np.zeros(len(low.data.vertices), dtype=np.int32)
+    a.data.foreach_get("value", layer)
+    bm = bmesh.new()
+    bm.from_mesh(low.data)
+    bm.verts.ensure_lookup_table()
+    bm.faces.ensure_lookup_table()
+    face_layer = np.array([min(layer[v.index] for v in f.verts) for f in bm.faces])
+    verts = [v.co.copy() for v in bm.verts]
+    order = sorted(set(layer.tolist()))
+    for L in order[1:]:
+        below = [f for f in bm.faces if face_layer[f.index] < L]
+        if not below:
+            continue
+        polys = [[v.index for v in f.verts] for f in below]
+        tree = BVHTree.FromPolygons(verts, polys)
+        for v in bm.verts:
+            if layer[v.index] != L:
+                continue
+            loc, nrm, _, dist = tree.find_nearest(v.co, 0.03)
+            if loc is None:
+                continue
+            h = (v.co - loc).dot(nrm)
+            if h < gap and h > -0.02:
+                v.co = v.co + nrm * (gap - h)
+        verts = [v.co.copy() for v in bm.verts]
+    bm.to_mesh(low.data)
+    bm.free()
+
+
+def weight_body(full, arm):
+    """Automatic (heat) weights of the full posed body for the deforming game bones."""
+    for g in list(full.vertex_groups):
+        full.vertex_groups.remove(g)
+    saved = {}
+    for b in arm.data.bones:
+        saved[b.name] = b.use_deform
+        if b.name.startswith("Jiggle_") or b.name.endswith("Grip"):
+            b.use_deform = False
+    _select([full, arm], arm)
+    bpy.ops.object.parent_set(type="ARMATURE_AUTO")
+    for b in arm.data.bones:
+        b.use_deform = saved[b.name]
+    full.parent = None
+    for m in list(full.modifiers):
+        full.modifiers.remove(m)
+
+
+def skin_low(low, full, arm):
+    """Weights for a game mesh: transferred from the weighted body (nearest surface), then the Jiggle_* groups the
+    loose parts carry take their share."""
+    jig = {g.name: g.index for g in low.vertex_groups if g.name.startswith("Jiggle_")}
+    jw = np.zeros((len(low.data.vertices), max(1, len(jig))))
+    names = list(jig)
+    for v in low.data.vertices:
+        for g in v.groups:
+            gn = low.vertex_groups[g.group].name
+            if gn in jig:
+                jw[v.index, names.index(gn)] = g.weight
+    for g in [g for g in low.vertex_groups if not g.name.startswith("Jiggle_")]:
+        low.vertex_groups.remove(g)
+    dt = low.modifiers.new("DT", "DATA_TRANSFER")
+    dt.object = full
+    dt.use_vert_data = True
+    dt.data_types_verts = {"VGROUP_WEIGHTS"}
+    dt.vert_mapping = "POLYINTERP_NEAREST"
+    dt.layers_vgroup_select_src = "ALL"
+    dt.layers_vgroup_select_dst = "NAME"
+    _select([low], low)
+    bpy.ops.object.datalayout_transfer(modifier=dt.name)
+    bpy.ops.object.modifier_apply(modifier=dt.name)
+    # loose parts: the jiggle bone gets its weight, the body bones share the rest
+    if jig:
+        body_groups = [g for g in low.vertex_groups if not g.name.startswith("Jiggle_")]
+        for v in low.data.vertices:
+            wj = jw[v.index].sum()
+            if wj <= 0:
+                continue
+            k = max(0.0, 1.0 - wj)
+            for g in v.groups:
+                gn = low.vertex_groups[g.group].name
+                if not gn.startswith("Jiggle_"):
+                    g.weight *= k
+    low.parent = arm
+    m = low.modifiers.new("Armature", "ARMATURE")
+    m.object = arm
+    # limit to 4 influences (Unity's default skin quality)
+    _select([low], low)
+    bpy.ops.object.vertex_group_limit_total(group_select_mode="ALL", limit=4)
+    bpy.ops.object.vertex_group_normalize_all(group_select_mode="ALL", lock_active=False)
 
 
 def export_character(path, armature, body):
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    bpy.ops.object.select_all(action="DESELECT")
-    armature.select_set(True)
-    body.select_set(True)
-    bpy.context.view_layer.objects.active = armature
+    _select([armature, body], armature)
     bpy.ops.export_scene.fbx(
         filepath=path, use_selection=True, apply_scale_options="FBX_SCALE_UNITS", axis_forward="-Z", axis_up="Y",
         bake_space_transform=False, object_types={"MESH", "ARMATURE"}, mesh_smooth_type="FACE", use_mesh_modifiers=False,
@@ -272,88 +291,110 @@ def export_character(path, armature, body):
         bake_anim_simplify_factor=0.0)
 
 
-def build_arms(faction):
-    """First-person forearms (skinned-style smooth mesh). Each object's origin is the palm; the forearm runs back toward the camera."""
-    import vexa_body
-    from vexa_body import soft_box, ring, LEVEL
-    f = FACTIONS[faction]
-    m = vexa_body.faction_materials(faction, f)
-    objs = []
-    for side, s in (("RightArm", -1), ("LeftArm", 1)):
-        # chain: elbow (behind, toward the camera) -> forearm -> wrist -> palm -> fingers, plus a thumb branch
-        out = 0.06 * s * -1 if side == "RightArm" else 0.04
-        pts = {"elb": ((out, 0.36, -0.12), (0.052, 0.05)), "fore": ((out * 0.5, 0.18, -0.06), (0.047, 0.043)),
-               "wr": ((0, 0.04, -0.012), (0.034, 0.03)), "palm": ((0, -0.01, 0.0), (0.045, 0.025)),
-               "fing": ((0, -0.06, -0.012), (0.04, 0.02)), "thumb": ((0.03 * -s, -0.03, 0.022), (0.014, 0.014))}
-        names = list(pts)
-        edges = [("elb", "fore"), ("fore", "wr"), ("wr", "palm"), ("palm", "fing"), ("palm", "thumb")]
-        me = bpy.data.meshes.new(side)
-        me.from_pydata([pts[n][0] for n in names], [(names.index(a), names.index(b)) for a, b in edges], [])
-        o = bpy.data.objects.new(side, me)
-        bpy.context.collection.objects.link(o)
-        sk = o.modifiers.new("Skin", "SKIN")
-        sk.branch_smoothing = 0.7
-        for i, n in enumerate(names):
-            me.skin_vertices[0].data[i].radius = pts[n][1]
-        me.skin_vertices[0].data[0].use_root = True
-        ss = o.modifiers.new("Sub", "SUBSURF")
-        ss.levels = ss.render_levels = 2
-        vexa_body._apply_all(o)
-        o.data.materials.append(m["jacket"])
-        o.data.materials.append(m["gloves"])
-        for poly in o.data.polygons:
-            poly.material_index = 1 if poly.center.y < 0.035 else 0
-        cuff = ring(side + "Cuff", (0, 0.05, -0.015), 0.04, 0.012, m["accent"] if faction == "akinci" else m["gear"], rot=(math.radians(90), 0, 0))
-        knuckle = soft_box(side + "Knuckle", (0, -0.035, 0.02), (0.05, 0.03, 0.012), m["polymer"], 0.35, sub=1)
-        bpy.ops.object.select_all(action="DESELECT")
-        for x in (cuff, knuckle, o):
-            x.select_set(True)
-        bpy.context.view_layer.objects.active = o
-        bpy.ops.object.join()
-        bpy.ops.object.shade_smooth()
-        objs.append(o)
-    return objs
+def build_arms(faction, high, posed, out, textures):
+    """First-person forearms cut from the high-poly character: sleeve, glove (and skin) from above the elbow to the
+    fingertips. Each object's origin is the grip point of that hand; forward is -Y like the weapons."""
+    import vexa_textures
+    from vexa_common import export_fbx
+    arms = []
+    attr = high.data.attributes.get("arm")
+    arm_face = np.zeros(len(high.data.polygons), dtype=np.int32)
+    if attr is not None:
+        attr.data.foreach_get("value", arm_face)
+    centers = np.zeros(len(high.data.polygons) * 3)
+    high.data.polygons.foreach_get("center", centers)
+    centers = centers.reshape(-1, 3)
+    for side, name in (("Right", "RightArm"), ("Left", "LeftArm")):
+        sh, el = posed[side + "UpperArm"][0], posed[side + "LowerArm"][0]
+        ht = posed[side + "Hand"][1]
+        a = el + (sh - el).normalized() * 0.07
+        b = ht + (ht - posed[side + "Hand"][0]).normalized() * 0.07
+        ab = np.array((b - a)[:])
+        t = np.clip(((centers - np.array(a[:])) @ ab) / (ab @ ab), 0, 1)
+        d = np.linalg.norm(centers - (np.array(a[:]) + t[:, None] * ab), axis=1)
+        keep = (arm_face == 1) & (d < 0.11) & (((centers - np.array(a[:])) @ ab) > 0)
+        src = duplicate(high, name + "_high")
+        import bmesh
+        bm = bmesh.new()
+        bm.from_mesh(src.data)
+        bm.faces.ensure_lookup_table()
+        bmesh.ops.delete(bm, geom=[f for f in bm.faces if not keep[f.index]], context="FACES")
+        bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+        bm.to_mesh(src.data)
+        bm.free()
+        low = decimate(duplicate(src, name), ARM_TRIS)
+        for vg in list(low.vertex_groups):
+            low.vertex_groups.remove(vg)
+        # the arm's islands (sleeve, glove, skin) refill their own texture
+        import vexa_uv
+        vexa_uv.pack(low)
+        if textures:
+            vexa_textures.bake_model(low, os.path.join(out, "Arms", "Textures"), f"{faction}_{name}", ARM_TEX, normal=True,
+                                     scale_hint=1.6, samples=6, source=src, extrusion=0.008, jpeg=True, keep_uv=True)
+        grip = posed[side + "Grip"][0]
+        low.data.transform(__import__("mathutils").Matrix.Translation(-grip))
+        low.location = (0, 0, 0)
+        bpy.data.objects.remove(src)
+        arms.append(low)
+    for o in arms:
+        for uvl in [u for u in o.data.uv_layers if u.name != "atlas"]:
+            o.data.uv_layers.remove(uvl)
+    export_fbx(os.path.join(out, "Arms", faction + ".fbx"), arms)
+    return arms
+
+
+def build_character(faction, out, textures):
+    import vexa_factions
+    import vexa_textures
+    reset_scene()
+    high, layout, full, posed, jiggles = vexa_factions.build(faction)
+    layout = dict(layout)
+    for side in ("Right", "Left"):
+        g = posed[side + "Grip"][0]
+        layout[side + "Grip"] = (tuple(g), tuple(g + Vector((0, -0.06, 0))), side + "Hand")
+    for name, root, tip, parent, _ in jiggles:
+        layout[name] = (tuple(root), tuple(tip), parent)
+    arm = build_armature(faction, layout)
+    weight_body(full, arm)
+    report = {}
+    lows = {}
+    for level, cfg in LOD.items():
+        low = decimate(duplicate(high, faction + "_body"), cfg["tris"])
+        fix_layers(low)
+        skin_low(low, full, arm)
+        if textures:
+            sub = "Characters" if level == "pc" else os.path.join("Characters", "Mobile")
+            vexa_textures.bake_model(low, os.path.join(out, sub, "Textures"), faction, cfg["tex"], normal=cfg["normal"],
+                                     scale_hint=1.6, samples=6 if level == "pc" else 4, source=high, extrusion=0.01,
+                                     jpeg=cfg["jpeg"], keep_uv=True)
+        lows[level] = low
+        report[level] = tri_count(low)
+    arms = build_arms(faction, high, posed, out, textures)
+    bpy.data.objects.remove(high)
+    full.hide_viewport = True
+    make_clips(arm)
+    for level, low in lows.items():
+        sub = "Characters" if level == "pc" else os.path.join("Characters", "Mobile")
+        # unlink the other LOD so it isn't exported
+        export_character(os.path.join(out, sub, faction + ".fbx"), arm, low)
+    print(f"{faction}: pc {report['pc']} tris, mobile {report['mobile']} tris, {len(jiggles)} jiggle bones, "
+          f"{len(bpy.data.actions)} clips, arms {[tri_count(a) for a in arms]}", flush=True)
+    return arm, lows
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
-    ap.add_argument("--preview", default="")
-    ap.add_argument("--textures", action="store_true", help="bake PBR textures")
+    ap.add_argument("--preview", default="", help="render a preview sheet of the exported, textured characters")
+    ap.add_argument("--textures", action="store_true", help="bake PBR textures (slow: 4K on the CPU)")
+    ap.add_argument("--only", default="")
     args = ap.parse_args([a for a in sys.argv[1:] if a != "--"])
-    import vexa_body
-    for level, sub in (("pc", "Characters"), ("mobile", os.path.join("Characters", "Mobile"))):
-        set_detail(level)
-        vexa_body.set_level(level)
-        for faction in FACTIONS:
-            reset_scene()
-            arm, body = build_character(faction)
-            if args.textures:
-                import vexa_textures
-                vexa_textures.bake_model(body, os.path.join(args.out, sub, "Textures"), faction, 2048 if level == "pc" else 1024,
-                                         normal=level == "pc", scale_hint=1.6, samples=8)
-            make_clips(arm)
-            export_character(os.path.join(args.out, sub, faction + ".fbx"), arm, body)
-            print(f"{level:7} {faction:8} {tri_count(body):6} tris, {len(bpy.data.actions)} clips")
-    set_detail("pc")
-    vexa_body.set_level("pc")
-    from vexa_common import export_fbx
-    for faction in FACTIONS:
-        reset_scene()
-        objs = build_arms(faction)
-        if args.textures:
-            import vexa_textures
-            for o in objs:
-                vexa_textures.bake_model(o, os.path.join(args.out, "Arms", "Textures"), f"{faction}_{o.name}", 512, normal=True, scale_hint=1.0)
-        export_fbx(os.path.join(args.out, "Arms", faction + ".fbx"), objs)
+    factions = [f for f in args.only.split(",") if f] or list(FACTIONS)
+    for faction in factions:
+        build_character(faction, args.out, args.textures)
     if args.preview:
         import vexa_preview
-        def make(fac):
-            def fn():
-                a, b = build_character(fac)
-                return a
-            return fn
-        vexa_preview.character_sheet([(f, make(f)) for f in FACTIONS], args.preview)
+        vexa_preview.textured_character_sheet(os.path.join(args.out, "Characters"), factions, args.preview)
 
 
 if __name__ == "__main__":

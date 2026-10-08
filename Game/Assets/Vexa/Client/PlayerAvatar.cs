@@ -10,7 +10,8 @@ namespace Vexa.Client
     /// <summary>
     /// Third-person player: the faction's rigged model, blended animation clips (idle / walk / run / crouch /
     /// jump / death) driven by the networked pose, upper body pitched to the aim, and the current weapon in hand.
-    /// The model's rest pose matches the server hitboxes. Falls back to primitives if the models are missing.
+    /// The model's rest pose matches the server hitboxes. Loose gear swings with <see cref="SpringBones"/>.
+    /// Falls back to primitives if the models are missing.
     /// </summary>
     public sealed class PlayerAvatar : MonoBehaviour
     {
@@ -59,8 +60,14 @@ namespace Vexa.Client
             _model.transform.SetParent(transform, false);
             _chest = ModelLibrary.FindDeep(_model.transform, "Chest");
             _head = ModelLibrary.FindDeep(_model.transform, "Head");
-            _hand = ModelLibrary.FindDeep(_model.transform, "RightHand");
-            foreach (var smr in _model.GetComponentsInChildren<SkinnedMeshRenderer>()) smr.updateWhenOffscreen = true;
+            // weapons hang on the grip point of the right hand (older models only have the hand bone)
+            _hand = ModelLibrary.FindDeep(_model.transform, "RightGrip") ?? ModelLibrary.FindDeep(_model.transform, "RightHand");
+            foreach (var smr in _model.GetComponentsInChildren<SkinnedMeshRenderer>())
+            {
+                smr.updateWhenOffscreen = true;
+                smr.quality = SkinQuality.Bone4;
+            }
+            SpringBones.Attach(_model);
 
             var animator = _model.GetComponent<Animator>() ?? _model.AddComponent<Animator>();
             animator.applyRootMotion = false;

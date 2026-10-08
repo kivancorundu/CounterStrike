@@ -240,3 +240,27 @@ def clear_objects():
         for b in list(block):
             if b.users == 0:
                 block.remove(b)
+
+
+def cut(target, cutters):
+    """Boolean difference: real holes, slots and ports (exact solver). The cutters are consumed."""
+    cutters = [c for c in cutters if c is not None]
+    if not cutters:
+        return target
+    col = bpy.data.collections.new("_cutters")
+    bpy.context.scene.collection.children.link(col)
+    for c in cutters:
+        apply_modifiers(c)
+        for uc in list(c.users_collection):
+            uc.objects.unlink(c)
+        col.objects.link(c)
+    m = target.modifiers.new("Cut", "BOOLEAN")
+    m.operation = "DIFFERENCE"
+    m.solver = "EXACT"
+    m.operand_type = "COLLECTION"
+    m.collection = col
+    apply_modifiers(target)
+    for c in list(col.objects):
+        bpy.data.objects.remove(c)
+    bpy.data.collections.remove(col)
+    return target

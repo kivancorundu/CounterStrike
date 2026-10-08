@@ -37,34 +37,46 @@ Durum: ✅ bitti · 🔄 sürüyor · ⏳ sırada
 
 - ✅ **İki detay seviyesi:**
   - **Mobil:** orta poligon (CS 1.6 yoğunluğu ama yuvarlatılmış köşeler).
-    - Karakter yaklaşık 6–8 bin, silah 1–4 bin üçgen.
-    - 512–1024 px renk ve metal/pürüzsüzlük dokusu.
+    - Karakter yaklaşık 9 bin, silah 1–4 bin üçgen.
+    - 256–1024 px renk ve metal/pürüzsüzlük dokusu.
   - **PC:** CS2 tarzı.
-    - Karakter yaklaşık 28–35 bin, silah 3–12 bin üçgen.
-    - İnce detaylar (vida, pim, kabze dokusu, şarjör kanalları, seçici kol).
-    - 1024–2048 px PBR dokular: renk, metal/pürüzsüzlük, normal haritası.
+    - Karakter yaklaşık 60 bin üçgen (yaklaşık 0,5 milyon üçgenlik yüksek poligondan pişirilir), silah 5–25 bin üçgen.
+    - 4K PBR dokular: renk, metal/pürüzsüzlük, normal haritası.
+    - Silahlarda aynı piksel yoğunluğu: tüfek / SMG / ağır silah 4K, tabanca ve bıçak 2K, bombalar 1K.
 - ✅ **Dokular Blender'da otomatik pişiriliyor** (`Tools/Blender/vexa_textures.py`):
-  - metalde kenar aşınması ve çizikler, ahşapta damar, kumaşta dokuma ve kırışıklar
+  - metalde kenar aşınması ve çizikler, ahşapta damar, kumaşta dokuma, kırışık ve bacaklarda toz
+  - ekoseli gömlek, örgü kar maskesi, kamuflaj
+  - ten (MakeHuman CC0 cilt dokusu + gözenek, sakal, kaş, kısa saç), gerçekçi gözler (iris, gözbebeği)
   - polimerde pütürlü yüzey, girintilerde kir (ambient occlusion)
 - ✅ **Özgün silah modelleri:** 33 silah, 6 el bombası, C4, imha kiti ve bıçak.
   - Blender script'iyle parametrik olarak üretiliyor (`Tools/Blender/vexa_weapons.py`).
+  - PC detayları gerçek kesiklerle (boolean): kovan çıkış penceresi ve içinde mekanizma, alt/üst gövde ayrım çizgisi, namlu freni ve alev gizleyici yarıkları.
+    - El kundağında havalandırma ve M-LOK yuvaları, kızakta tırtıllar, nişangahlarda nokta.
+  - Ayrıca: şarjör kaburgaları ve kontrol delikleri, dürbün halkaları ve tırtıllı kuleler.
+    - Yuvarlatılmış ahşap/polimer dipçik ve kabzalar (parmak yuvaları).
+    - AK tipi: arpacık kulesi, gaz bloğu, temizleme çubuğu, perçinler.
+    - AR tipi: ileri itme düğmesi, kovan saptırıcı, kurma kolu.
   - Namlu ucu, destek eli ve kovan çıkışı için işaret noktaları var.
-- ✅ **Özgün karakterler:** iki taraf. Gövde tek parça organik bir mesh (skin modifier + subdivision), iskelete otomatik ağırlıklandırılmış; kafa ayrı heykellenmiş (kafatası, çene, burun, kulaklar).
-  - **Akıncı** (saldırı): kum rengi ceket, kep ve gözlük.
-  - **Muhafız** (savunma): lacivert üniforma, vizörlü kask ve plaka yeleği.
-  - İkisi de rig'li; 7 animasyonu var: bekleme, yürüme, koşma, eğilme, eğilerek yürüme, zıplama, ölüm.
-  - Ölçüler sunucu hitbox'larıyla birebir aynı.
+- ✅ **Gerçekçi karakterler (v3):** MakeHuman'ın CC0 temel insan mesh'inden iri yapılı askerler; iki taraf da özgün tasarım.
+  - **Akıncı** (saldırı): örgü kar maskesi, kolları sıvanmış ekoseli gömlek, açık renk plaka yeleği, haki kargo pantolon, kemer ve tabanca kılıfı.
+  - **Muhafız** (savunma): başlık ve tam yüz gaz maskesi (çift cam, yan filtre, kafa kayışları), lacivert üniforma.
+    - Cepli plaka yeleği, telsiz ve anten, dizlik, bacak kılıfı, boşaltma çantası.
+  - Eller silahı gerçekten kavrar (IK + parmak pozları). Kıyafetler katmanlı, kırışık ve dikişli.
+  - Rig'li; 7 animasyonu var: bekleme, yürüme, koşma, eğilme, eğilerek yürüme, zıplama, ölüm. Ölçüler sunucu hitbox'larıyla uyumlu.
+  - **Kıyafet fiziği:** anten, çanta, kılıf, kayış uçları ve bez yay benzetimiyle sallanır (mobilde de ucuz).
 - ✅ **Birinci şahıs:** silah ve eller.
+  - Kollar karakterin kendisinden kesilir: aynı kol, eldiven ve kavrama, 2K doku.
   - Kod ile hareket: sallanma, yürüme salınımı, geri tepme, şarjör, çekme, inceleme, bomba hazırlama.
   - Duvarların içine girmez.
-- ✅ **Üçüncü şahıs:** animasyon karışımı ağ pozundan sürülüyor; nişan için üst gövde eğiliyor, silah elde.
+- ✅ **Üçüncü şahıs:** animasyon karışımı ağ pozundan sürülüyor; nişan için üst gövde eğiliyor, silah elin kavrama noktasında.
 - ✅ **Ses (geçici, sentez):**
   - 3B konumsal silah ve ayak sesleri (zemine göre; yürüme ve eğilme sessiz).
   - Şarjör, bombalar, giderek hızlanan C4 bipi, isabet ve öldürme geri bildirimi, raund sesleri.
-- ⏳ Kaydedilmiş/tasarlanmış ses paketi; el animasyonları için kemikli kollar; bir 3D sanatçıdan yüz ve kumaş rötuşu.
+- ⏳ Kaydedilmiş/tasarlanmış ses paketi; el animasyonları için kemikli kollar; silahlar için silah başına elle ayarlanmış model geçişi (CS2 seviyesine yaklaşmak için).
 
-> Modeller tekrar üretilebilir. Önce `pip install bpy`, sonra `python Tools/Blender/vexa_weapons.py --out Game/Assets/Vexa/Resources/Models --textures`
-> ve aynı şekilde `vexa_characters.py`. Dokularla birlikte tüm set yaklaşık 1 saat sürer. PC'de CS2 seviyesi için bu modeller bir 3D sanatçının rötuşu ve dokularıyla tamamlanmalı.
+> Modeller tekrar üretilebilir. Önce `pip install bpy`, sonra `python Tools/Blender/vexa_characters.py --out Game/Assets/Vexa/Resources/Models --textures`
+> ve aynı şekilde `vexa_weapons.py`. 4K dokularla tüm set CPU'da yaklaşık 1,5–2 saat sürer.
+> Karakter gövdesi MakeHuman'ın CC0 verisinden gelir (`Tools/Blender/data/MAKEHUMAN_CC0.md`); kıyafet ve teçhizatın tamamı script ile üretilir.
 
 ## Faz 3 — Gerçek arayüz 🔄
 

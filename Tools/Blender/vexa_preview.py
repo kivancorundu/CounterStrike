@@ -24,6 +24,7 @@ def _setup_render(path, width, height, samples=24):
     bg.inputs["Color"].default_value = (0.055, 0.065, 0.085, 1)
     bg.inputs["Strength"].default_value = 1.0
     sc.view_settings.view_transform = "Standard"
+    sc.view_settings.look = "None"
 
 
 def _light(rot, energy):
@@ -118,6 +119,8 @@ def _textured(obj, tex_base, normal=True):
     bsdf = nt.nodes.get("Principled BSDF")
     def img(suffix, non_color):
         path = tex_base + suffix
+        if not os.path.exists(path) and suffix.endswith(".png"):
+            path = path[:-4] + ".jpg"
         if not os.path.exists(path):
             return None
         n = nt.nodes.new("ShaderNodeTexImage")
@@ -195,23 +198,61 @@ def textured_weapon_sheet(model_dir, ids, path, cols=5, persp=True):
 
 
 def textured_character_sheet(model_dir, factions, path):
+    """Exported, textured characters: full body front and back (3/4) and a head close-up for each faction."""
     reset_scene()
+    groups = {}
     for i, f in enumerate(factions):
         roots, new = import_fbx(os.path.join(model_dir, f + ".fbx"))
         mesh = next(o for o in new if o.type == "MESH")
         _textured(mesh, os.path.join(model_dir, "Textures", f))
-        root = roots[0]
-        root.location = (0, -i * 1.3, 0)
-        root.rotation_euler = (root.rotation_euler.x, root.rotation_euler.y, math.radians(-30))
+        for o in new:
+            if o.type == "ARMATURE":
+                # the rest pose is the aiming pose
+                o.animation_data_clear()
+                o.data.pose_position = "REST"
+        for root in roots:
+            root.location = (0, -i * 1.6, 0)
+        groups[f] = new
+    _light((math.radians(48), math.radians(12), math.radians(-55)), 3.2)
+    _light((math.radians(-45), 0, math.radians(135)), 1.4)
+    _light((math.radians(80), 0, math.radians(30)), 0.8)
     cam = bpy.data.cameras.new("Cam")
-    cam.lens = 60
     co = bpy.data.objects.new("Cam", cam)
-    co.location = (-6.4, -(len(factions) - 1) * 0.65 - 0.8, 1.35)
-    co.rotation_euler = (math.radians(86), 0, math.radians(-97))
     bpy.context.collection.objects.link(co)
     bpy.context.scene.camera = co
-    _light((math.radians(45), math.radians(15), math.radians(-60)), 4.0)
-    _light((math.radians(-50), 0, math.radians(130)), 1.5)
-    _setup_render(path, 1600, 1200, 64)
-    bpy.ops.render.render(write_still=True)
+    _setup_render(path, 1000, 1250, 48)
+    sc = bpy.context.scene
+    world = sc.world.node_tree.nodes.get("Background")
+    world.inputs["Color"].default_value = (0.11, 0.12, 0.14, 1)
+    base, ext = os.path.splitext(path)
+    shots = []
+    for i, f in enumerate(factions):
+        y = -i * 1.6
+        for tag, loc, tgt, lens in (("front", (-1.9, y - 3.2, 1.25), (0, y - 0.05, 0.98), 42),
+                                    ("back", (2.2, y + 3.0, 1.35), (0, y, 0.98), 42),
+                                    ("head", (-0.45, y - 0.85, 1.75), (0, y - 0.03, 1.66), 70)):
+            co.location = loc
+            d = Vector(tgt) - Vector(loc)
+            co.rotation_euler = d.to_track_quat("-Z", "Y").to_euler()
+            cam.lens = lens
+            # keep the other factions out of frame
+            for g, objs in groups.items():
+                for o in objs:
+                    o.hide_render = g != f
+            sc.render.filepath = f"{base}_{f}_{tag}.png"
+            bpy.ops.render.render(write_still=True)
+            shots.append(sc.render.filepath)
+    try:
+        from PIL import Image
+        ims = [Image.open(p_).convert("RGB") for p_ in shots]
+        w, h = ims[0].size
+        cols = 3
+        rows = (len(ims) + cols - 1) // cols
+        sheet = Image.new("RGB", (w * cols, h * rows))
+        for k, im in enumerate(ims):
+            sheet.paste(im, ((k % cols) * w, (k // cols) * h))
+        sheet = sheet.resize((w * cols // 2, h * rows // 2))
+        sheet.save(path, quality=90)
+    except ImportError:
+        pass
     print("preview written to", path)
