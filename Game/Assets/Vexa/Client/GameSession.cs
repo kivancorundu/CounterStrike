@@ -52,6 +52,7 @@ namespace Vexa.Client
         private ShotEffects _effects;
         private WorldVisuals _world;
         private readonly Audio.GameAudio _audio = new Audio.GameAudio();
+        private readonly ViewModel _viewModel = new ViewModel();
         private float _connectStarted;
 
         /// <summary>Everything the play screen chooses for a locally hosted match.</summary>
@@ -286,6 +287,7 @@ namespace Vexa.Client
             UpdateSpectating();
             SyncAvatars();
             _camera.Update(this, dt);
+            _viewModel.Update(this, Camera.main, dt);
             _effects.Update(dt);
             _world.Update(Client, dt);
             _audio.Update(IsDemo ? (DemoPaused ? 0f : dt * DemoSpeed) : dt);
@@ -310,7 +312,9 @@ namespace Vexa.Client
                 seen.Add(r.Id);
                 if (!Client.TryGetRemotePose(r.Id, out var pose)) continue;
                 if (!_avatars.TryGetValue(r.Id, out var av)) { av = PlayerAvatar.Create(r.Name, pose.Team); _avatars[r.Id] = av; }
-                av.Apply(pose, r.Name);
+                // like CS: names over teammates only (spectators see everyone's)
+                bool showName = Client.LocalTeam == Team.None || pose.Team == Client.LocalTeam;
+                av.Apply(pose, r.Name, showName);
                 // first-person spectating: don't render the body we're looking out of
                 bool hide = Spectating && Spectate.Mode == Spectator.ViewMode.InEye && Spectate.Target == r.Id && pose.Alive;
                 if (av.gameObject.activeSelf == hide) av.gameObject.SetActive(!hide);
@@ -326,9 +330,10 @@ namespace Vexa.Client
             Vector3 muzzle;
             if (local)
             {
-                // tracer starts slightly right/below the eye, like a viewmodel muzzle
-                var rot = UnityBridge.ViewRotation(Input.Yaw, Input.Pitch);
-                muzzle = shot.Origin.ToU() + rot * new Vector3(0.12f, -0.1f, 0.4f);
+                _viewModel.OnLocalShot(Weapons.Get(shot.Weapon));
+                // tracers start at the first-person weapon's muzzle (or near the eye without models)
+                if (!_viewModel.TryGetMuzzle(Camera.main, out muzzle))
+                    muzzle = shot.Origin.ToU() + UnityBridge.ViewRotation(Input.Yaw, Input.Pitch) * new Vector3(0.12f, -0.1f, 0.4f);
             }
             else muzzle = shot.Origin.ToU() + UnityBridge.ViewRotation(shot.Yaw, shot.Pitch) * new Vector3(0.1f, -0.15f, 0.6f);
             _effects.Shot(Client.World, shot, muzzle, local);
@@ -368,6 +373,7 @@ namespace Vexa.Client
             _effects?.Clear();
             _world?.Clear();
             _audio.Clear();
+            _viewModel.Clear();
             HostServer?.StopRecording();
             _clientNet?.Dispose(); _clientNet = null;
             _serverNet?.Dispose(); _serverNet = null;

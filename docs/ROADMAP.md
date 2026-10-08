@@ -32,17 +32,28 @@ Durum: ✅ bitti · 🔄 sürüyor · ⏳ sırada
   - Bölge planı, bomba kurma, geri alma ve imha; bomba atma; tepki süresi ve sprey kontrolü.
 - ✅ **Rekabetçi harita "Kasaba":** iki bomba bölgesi, satın alma bölgeleri, 5'e 5 doğma noktaları.
 - ✅ **49 otomatik test**; tam bot maçı Kasaba'da sonuna kadar oynanıyor.
-- ⏳ Oyuncu-oyuncu çarpışması, sunucu tarafı demo kaydı (Faz 5'e taşındı).
 
-## Faz 2 — Görseller: silahlar ve karakterler ⏳
+## Faz 2 — Görseller: silahlar ve karakterler 🔄
 
-- Özgün silah modelleri: tüm silahlar için birinci şahıs (viewmodel) ve üçüncü şahıs.
-- Özgün karakter modelleri (2 taraf), rig ve animasyonlar: koşma, eğilme, zıplama, şarjör, atış, ölüm.
-- Birinci şahıs animasyonları: çekme, inceleme, şarjör.
-- Ses: 3B konumsal ayak sesleri ve silah sesleri, malzemeye göre çarpma sesleri.
-- PC ve mobil için ayrı LOD ve kalite seviyeleri.
+- ✅ **Özgün silah modelleri:** 33 silah, 6 el bombası, C4, imha kiti ve bıçak; PC ve mobil (düşük poligon) sürümleri.
+  - Blender script'iyle parametrik olarak üretiliyor (`Tools/Blender/vexa_weapons.py`).
+  - Pahlı kenarlar sayesinde küp küp durmuyor. Namlu ucu, destek eli ve kovan çıkışı için işaret noktaları var.
+- ✅ **Özgün karakterler:** iki taraf.
+  - **Akıncı** (saldırı): kum rengi ceket, kep ve gözlük.
+  - **Muhafız** (savunma): lacivert üniforma, vizörlü kask ve plaka yeleği.
+  - İkisi de rig'li; 7 animasyonu var: bekleme, yürüme, koşma, eğilme, eğilerek yürüme, zıplama, ölüm.
+  - Ölçüler sunucu hitbox'larıyla birebir aynı.
+- ✅ **Birinci şahıs:** silah ve eller.
+  - Kod ile hareket: sallanma, yürüme salınımı, geri tepme, şarjör, çekme, inceleme, bomba hazırlama.
+  - Duvarların içine girmez.
+- ✅ **Üçüncü şahıs:** animasyon karışımı ağ pozundan sürülüyor; nişan için üst gövde eğiliyor, silah elde.
+- ✅ **Ses (geçici, sentez):**
+  - 3B konumsal silah ve ayak sesleri (zemine göre; yürüme ve eğilme sessiz).
+  - Şarjör, bombalar, giderek hızlanan C4 bipi, isabet ve öldürme geri bildirimi, raund sesleri.
+- ⏳ Kaydedilmiş/tasarlanmış ses paketi; dokular (şu an düz renkli malzemeler); el animasyonları için kemikli kollar.
 
-> Model üretimi Blender script'leriyle yapılacak. PC'de CS2 kalitesi hedefleniyorsa, prototip modeller sonrasında bir 3D sanatçının rötuşu önerilir.
+> Modeller tekrar üretilebilir: `pip install bpy` sonrası `python Tools/Blender/vexa_weapons.py --out Game/Assets/Vexa/Resources/Models`
+> ve `vexa_characters.py`. PC'de CS2 seviyesi için bu modeller bir 3D sanatçının rötuşu ve dokularıyla tamamlanmalı.
 
 ## Faz 3 — Gerçek arayüz 🔄
 
@@ -58,27 +69,39 @@ Durum: ✅ bitti · 🔄 sürüyor · ⏳ sırada
 - ✅ **Duraklatma menüsü** (takım değiştirme), maç sonu ekranı (zafer / mağlubiyet, maçın oyuncuları).
 - ✅ **Ayarlar:** hassasiyet (CS ölçeği), nişangah editörü (önizleme, hazır ayarlar, paylaşım kodu), görüntü, FPS sınırı, ses, tuşlar.
 - ✅ **Dünya görselleri (geçici):** uçan bombalar, sis, ateş, kurulu bomba (giderek hızlanan ışık), yerdeki silahlar.
-- ⏳ Mobil: düzenlenebilir buton yerleşimi, jiroskopla nişan.
-- ⏳ Tuş atama ekranı, ses paketi.
+- ✅ **Mobil:** sürükle-bırak buton yerleşimi düzenleyici, buton opaklığı, jiroskopla nişan (ters çevirme seçenekleri).
+- ✅ **Tuş atama ekranı:** her eylem değiştirilebilir, fare tuşları dahil.
+- ✅ **Sohbet arayüzü, izleyici paneli, turnuva durum şeridi, demo oynatıcı ve demo listesi.**
 
 ## Faz 4 — Haritalar ⏳
 
 - 2–3 rekabetçi haritanın blockout'u ve oynanış testleri, ardından sanat geçişi.
 - Eğimli yüzey ve rampa desteği (üçgen mesh çarpışması).
 
-## Faz 5 — Online altyapı ⏳
+## Faz 5 — Online altyapı 🔄
 
-- Hesaplar (rally.gg ile giriş), arkadaşlar, lobiler.
-- Eşleştirme ve rank sistemi (Glicko-2). **PC ve mobil ayrı havuzlarda.**
-- Sunucu orkestrasyonu: Docker, bölgesel otomatik ölçekleme.
-- Hile koruması 2. seviye: görünürlük filtresi, aimbot istatistikleri, rapor ve inceleme.
-- İzleyici (GOTV benzeri, gecikmeli yayın), demo ve tekrar oynatıcı.
+- ✅ **Oyuncu-oyuncu çarpışması** (istemci tahminli).
+- ✅ **Sohbet:** herkes ve takım kanalları; ölüler canlı raundda sadece ölülerle konuşur.
+- ✅ **İzleyici modu:** ölünce takım arkadaşlarını izleme (göz / üçüncü şahıs); izleyiciler herkesi izler.
+- ✅ **Demo:** sunucu "VEXA TV" kaydı (.vxdemo).
+  - Oyunda DEMOLAR menüsünden oynatılıyor: duraklatma, 0.25–4× hız, raund atlama, zaman çubuğu.
+- ⏳ Hesaplar (rally.gg ile giriş), arkadaşlar, lobiler.
+- ⏳ Eşleştirme ve rank sistemi (Glicko-2). **PC ve mobil ayrı havuzlarda.**
+- ⏳ Sunucu orkestrasyonu: Docker, bölgesel otomatik ölçekleme.
+- ⏳ Hile koruması 2. seviye: görünürlük filtresi, aimbot istatistikleri, rapor ve inceleme.
+- ⏳ Canlı yayın için gecikmeli izleyici sunucusu.
 
-## Faz 6 — Turnuva ve rally.gg entegrasyonu ⏳
+## Faz 6 — Turnuva ve rally.gg entegrasyonu 🔄
 
-- **Turnuva sunucu modu:** maç yapılandırması (JSON), bıçak turu, duraklatma, teknik mola, uzatma ayarları, takım isimleri.
-- **rally.gg API'si:** maç oluşturma → sunucu ayağa kaldırma → sonuç ve istatistiklerin webhook ile gönderimi.
-- Turnuva hakem paneli, izleyici linkleri.
+- ✅ **Turnuva sunucu modu** (`--config maç.json`, örnek: `Server/Vexa.Server/Examples/tournament-match.json`):
+  - takım isimleri, kadrolar (listede olmayan izleyici olur), hazır olma (`.ready`)
+  - bıçak raundu ve taraf seçimi (`.stay` / `.switch`)
+  - taktik mola (`.tac`, takım başına 3) ve teknik duraklatma (`.tech` / `.unpause`); ikisi de donma süresinde başlar
+  - uzatma ve raund ayarları
+- ✅ **Sonuç dosyası (JSON):** takımlar, skorlar, oyuncu istatistikleri, raund raund geçmiş. Kodda `MatchFinished` olayı da var.
+- ✅ **Sunucu konsolu:** `status`, `say`, `pause`, `unpause`, `forceready`, `restart`, `kick`, `record`.
+- ⏳ **rally.gg API'si:** maç oluşturma → sunucu ayağa kaldırma → sonucun webhook ile gönderimi (API bilgisi bekleniyor; sonuç JSON'u hazır).
+- ⏳ Turnuva hakem paneli, izleyici linkleri.
 
 ## Faz 7 — Beta ve çıkış ⏳
 

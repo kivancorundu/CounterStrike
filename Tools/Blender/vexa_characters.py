@@ -129,6 +129,11 @@ def build_body(faction):
     limb("NeckPart", (0, -0.01, 1.49), (0, -0.02, 1.6), 0.068, 0.06, mask if not f["vest"] else top, "Neck", parts)
     head = _applied(sphere("HeadBall", (0, -0.035, 1.69), 0.11, mask, scale=(0.9, 0.98, 1.05)))
     parts.append(tag(head, "Head"))
+    # jaw + chin, so the neck doesn't read as a stalk
+    jaw = _applied(sphere("Jaw", (0, -0.055, 1.615), 0.078, mask, scale=(1.0, 1.05, 0.85)))
+    parts.append(tag(jaw, "Head"))
+    if f["vest"]:
+        rounded("Collar", (0, 0.0, 1.49), (0.25, 0.19, 0.06), top, "Chest", parts, 0.025)
     if f["headgear"] == "helmet":
         helmet = _applied(sphere("Helmet", (0, -0.03, 1.72), 0.128, gear, scale=(0.95, 1.05, 0.85)))
         parts.append(tag(helmet, "Head"))

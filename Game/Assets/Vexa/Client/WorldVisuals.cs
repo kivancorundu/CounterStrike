@@ -97,8 +97,12 @@ namespace Vexa.Client
                 _seen.Add(p.Id);
                 if (!_projectiles.TryGetValue(p.Id, out var go))
                 {
-                    go = Prim(PrimitiveType.Capsule, null, NadeMat(p.Type), "Grenade_" + p.Type);
-                    go.transform.localScale = new Vector3(0.07f, 0.06f, 0.07f);
+                    go = Art.ModelLibrary.Weapon(Art.ModelLibrary.GrenadeKey(p.Type));
+                    if (go == null)
+                    {
+                        go = Prim(PrimitiveType.Capsule, null, NadeMat(p.Type), "Grenade_" + p.Type);
+                        go.transform.localScale = new Vector3(0.07f, 0.06f, 0.07f);
+                    }
                     _projectiles[p.Id] = go;
                     go.transform.position = p.Position.ToU();
                 }
@@ -153,10 +157,15 @@ namespace Vexa.Client
                 _seen.Add(it.Id);
                 if (!_items.TryGetValue(it.Id, out var go))
                 {
-                    var def = Weapons.Get(it.Weapon);
-                    float len = def == null ? 0.4f : def.Slot == WeaponSlotKind.Primary ? 0.85f : 0.28f;
-                    go = Prim(PrimitiveType.Cube, null, _itemMat, "Item_" + it.Weapon);
-                    go.transform.localScale = new Vector3(0.07f, 0.12f, len);
+                    go = Art.ModelLibrary.Weapon(Art.ModelLibrary.WeaponKey(it.Weapon));
+                    if (go == null)
+                    {
+                        var def = Weapons.Get(it.Weapon);
+                        float len = def == null ? 0.4f : def.Slot == WeaponSlotKind.Primary ? 0.85f : 0.28f;
+                        go = Prim(PrimitiveType.Cube, null, _itemMat, "Item_" + it.Weapon);
+                        go.transform.localScale = new Vector3(0.07f, 0.12f, len);
+                    }
+                    // lying on its side at a random heading
                     go.transform.rotation = Quaternion.Euler(0, (it.Id * 73) % 360, 90);
                     _items[it.Id] = go;
                 }
@@ -236,8 +245,13 @@ namespace Vexa.Client
             _ledOn = Unlit(new Color(1f, 0.15f, 0.1f));
             _ledOff = Unlit(new Color(0.25f, 0.05f, 0.04f));
             _bomb = new GameObject("Bomb");
-            var body = Prim(PrimitiveType.Cube, _bomb.transform, _bombMat, "Body");
-            body.transform.localScale = new Vector3(0.3f, 0.09f, 0.2f);
+            var model = Art.ModelLibrary.Weapon("c4");
+            if (model != null) model.transform.SetParent(_bomb.transform, false);
+            else
+            {
+                var body = Prim(PrimitiveType.Cube, _bomb.transform, _bombMat, "Body");
+                body.transform.localScale = new Vector3(0.3f, 0.09f, 0.2f);
+            }
             var led = Prim(PrimitiveType.Cube, _bomb.transform, _ledOff, "Led");
             led.transform.localScale = new Vector3(0.03f, 0.02f, 0.03f);
             led.transform.localPosition = new Vector3(0.09f, 0.055f, 0.05f);

@@ -19,11 +19,12 @@ Game/                       Unity projesi (Unity 6, URP)
   Assets/Vexa/Client/       Unity katmanı: giriş, kamera, oturum, dünya görselleri ve efektler
   Assets/Vexa/Client/UI/    Arayüz (UI Toolkit, koddan kurulur): menüler, HUD, radar, satın alma, skor, ayarlar
   Assets/Vexa/Resources/Fonts/  Barlow yazı tipleri (SIL Open Font License, OFL.txt)
+  Assets/Vexa/Resources/Models/ Üretilmiş FBX modeller: Weapons, Characters, Arms (+ Mobile alt klasörleri)
   Assets/Vexa/Editor/       Harita dışa aktarma aracı (VEXA menüsü)
   Assets/StreamingAssets/Maps/  .vxmap çarpışma haritaları (sunucu + istemci ortak)
 Server/Vexa.Server/         Bağımsız (headless) Linux/Windows sunucusu, Unity gerektirmez
 Tests/Vexa.Tests/           Otomatik testler (hareket, silahlar, hasar, netcode, hile korumaları, maç kuralları, botlar)
-Tools/                      Unity olmadan derleme kontrolleri
+Tools/                      Unity olmadan derleme kontrolleri; Tools/Blender: model üreticiler (silahlar, karakterler)
 docs/                       Mimari ve yol haritası
 archive/web-prototype/      Eski tarayıcı prototipi (referans için saklandı)
 ```
@@ -44,6 +45,13 @@ dotnet run --project Server/Vexa.Server -c Release -- --map kasaba --mode compet
 dotnet run --project Server/Vexa.Server -c Release -- --map training --mode deathmatch --bots 6
 ```
 Modlar: `competitive`, `casual`, `deathmatch`, `practice`. `--difficulty` 0 (kolay) ile 1 (uzman) arasında.
+
+**Turnuva maçı:** `--config maç.json` ile çalıştırılır. Dosyada takım isimleri, kadrolar, bıçak raundu, hazır olma, molalar, sonuç ve demo yolu bulunur. Örnek: `Server/Vexa.Server/Examples/tournament-match.json`.
+- Oyuncular sohbete `.ready`, `.stay` / `.switch`, `.tac`, `.tech`, `.unpause` yazar (Esc menüsünde düğme olarak da var).
+- Sunucu konsolunda `help` yazınca yönetici komutları listelenir.
+- Maç bitince sonuç JSON'u yazılır. rally.gg API'si gelince bu dosya oraya gönderilecek.
+
+**Demo kaydı:** `--record maç.vxdemo`. Kayıtlar oyunda **DEMOLAR** menüsünden izlenir. Kendi kurduğun maçlar için o menüde "MAÇLARIMI KAYDET"i aç.
 
 ### 3) Unity'de aç
 1. Unity Hub ile **Unity 6 LTS** (6000.0.x) kur. Mobil için Android/iOS modüllerini de ekle.
@@ -73,7 +81,11 @@ Modlar: `competitive`, `casual`, `deathmatch`, `practice`. `--difficulty` 0 (kol
 | B | Satın alma menüsü (1–6 sütun, ardından ürün numarası) |
 | Tab | Skor tablosu |
 | M | Takım değiştir |
+| Y / U | Sohbet: herkes / takım |
 | Esc | Menü |
+
+Tüm tuşlar **Ayarlar → Tuşlar** ekranından değiştirilebilir. Ölünce sol/sağ tık ile takım arkadaşları arasında geçiş yapılır, Boşluk ile kamera değişir.
+Demo izlerken: Boşluk duraklat, ↑/↓ hız, PgUp/PgDn raund, ←/→ oyuncu, C kamera.
 
 **Mobil:** sol yarıda joystick, sağ yarıda sürükleyerek bakış, ekran butonları; üstte MENÜ / SATIN AL / SKOR.
 
@@ -81,4 +93,7 @@ Modlar: `competitive`, `casual`, `deathmatch`, `practice`. `--difficulty` 0 (kol
 
 ## Durum
 
-Mevcut kilometre taşı: **rekabetçi oynanış (Faz 1) ve gerçek arayüz (Faz 3)**. Modeller ve haritaların sanat geçişi sırada. Ayrıntılar için [docs/ROADMAP.md](docs/ROADMAP.md) ve [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Mevcut kilometre taşı: rekabetçi oynanış, arayüz, özgün silah ve karakter modelleri, sohbet, izleyici, demo ve turnuva modu. Sırada: rally.gg API entegrasyonu (API bilgisi bekleniyor), haritaların sanat geçişi, dokular ve ses paketi.
+
+![Silahlar](docs/images/weapons.jpg)
+![Karakterler](docs/images/characters.jpg) Ayrıntılar için [docs/ROADMAP.md](docs/ROADMAP.md) ve [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

@@ -105,6 +105,29 @@ Arayüz `Client/UI` altında tamamen C# ile kurulur. UXML/USS dosyası, sahne ve
 - **Tema** (`Theme`, `Fonts`, `U` yardımcıları) tek yerde. Renkler: zemin `#0A0D12`, vurgu `#D7FF3C`, saldırı `#F2A33A`, savunma `#5AB0FF`. Yazı tipleri: Barlow ve Barlow Condensed (OFL).
 - **Ayarlar** (`VexaSettings`) `PlayerPrefs`'te tutulur. Nişangah `VX-...` paylaşım koduna çevrilebilir.
 
+## Turnuva, sohbet ve demo
+
+- **Turnuva katmanı** (`Server/ServerTournament.cs`): hazır olma, bıçak raundu ve taraf seçimi, molalar, kadrolar, takım isimleri, sonuç JSON'u.
+  - Hepsi sohbet komutlarıyla sürülür, yani her istemci aynı şekilde kullanabilir.
+  - Molalar CS'teki gibi donma süresinde başlar. Teknik duraklatmada saat durur.
+  - Ayarlar `MatchConfig.FromJson` ile maç dosyasından okunur (çekirdekte bağımlılıksız küçük bir JSON okuyucu var: `MiniJson`).
+- **Sohbet:** sunucu filtreler. Takım kanalı sadece takıma gider. Canlı raundda ölülerin mesajı canlılara ulaşmaz. Saniyede birkaç satırdan fazlası kesilir.
+- **Demo:** sunucunun taşıma katmanında bir `DemoTap` vardır. Gizli bir izleyici oyuncuya ("VEXA TV") giden her paket zamanıyla birlikte `.vxdemo` dosyasına yazılır.
+  - Oynatma, `DemoPlayback` taşıması ile aynı paketleri sıradan bir `ClientGame`'e verir.
+  - Bu yüzden demo, canlı izleyicilikle birebir aynı kodla çizilir; ayrı bir oynatıcı mantığı yoktur.
+  - Geri sarma, demoyu baştan hızlıca tekrar oynatır.
+- **Oyuncu çarpışması:** diğer oyuncuların gövde kutuları hareket simülasyonuna "dinamik engel" olarak verilir (mermiler ve görüş hattı bunları görmez).
+  - İstemci kendi tahmininde rakipleri gördüğü konumda kullanır.
+
+## Görseller ve ses
+
+- **Modeller** `Tools/Blender` script'leriyle üretilip `Resources/Models` altına FBX olarak yazılır. Mobil sürüm düşük poligonlu ayrı dosyalardır.
+  - `ModelLibrary` bunları yükler. Model yoksa ilkel şekillere geri düşülür; oyun yine çalışır.
+- **Karakter animasyonu** `PlayableGraph` ile yapılır (Animator Controller gerektirmez): klipler ağdan gelen hız, eğilme ve zemin durumuna göre karıştırılır.
+  - Nişan için göğüs kemiği eğilir. Silah sağ el kemiğine yerleşir.
+- **Birinci şahıs** (`ViewModel`): silah ve kollar 1/4 ölçekte, kameraya 4 kat daha yakın çizilir. Görüntü aynıdır ama model oyuncunun kendi gövdesinin içinde kalır, duvara girmez.
+- **Ses** (`Audio/SoundSynth`, `GameAudio`): şimdilik tüm sesler kodla sentezlenir ve 3B konumsal çalınır. Ses paketi gelince aynı isimlerle değiştirilecek.
+
 ## Harita hattı
 
 1. Haritalar Unity'de normal objelerle tasarlanır. Çarpışma için BoxCollider kullanılır; malzeme seçimi `VexaSurface` ile, doğuş noktaları `VexaSpawn` ile, bomba bölgeleri ve satın alma alanları `VexaZone` ile işaretlenir.
