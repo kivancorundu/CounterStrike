@@ -4,8 +4,8 @@ plus first-person arms.
 
     python vexa_characters.py --out ../../Game/Assets/Vexa/Resources/Models [--textures] [--preview sheet.png]
 
-    Characters/<faction>.fbx          PC: ~60k triangles, 4K textures (JPEG albedo/normal + PNG mask)
-    Characters/Mobile/<faction>.fbx   mobile: ~9k triangles, 1K textures
+    Characters/<faction>.fbx          PC: ~80k triangles, 4K textures (JPEG albedo/normal + PNG mask)
+    Characters/Mobile/<faction>.fbx   mobile: ~10k triangles, 1K textures
     Arms/<faction>.fbx                first-person forearms: objects "RightArm" and "LeftArm", the grip point at each origin
 
 Pipeline (see vexa_human, vexa_outfit, vexa_factions): MakeHuman CC0 body shaped into a heavily built soldier and
@@ -31,7 +31,7 @@ from vexa_common import reset_scene, tri_count
 
 FPS = 24
 FACTIONS = ("akinci", "muhafiz")
-LOD = {"pc": dict(tris=60000, tex=4096, jpeg=True, normal=True), "mobile": dict(tris=9000, tex=1024, jpeg=False, normal=False)}
+LOD = {"pc": dict(tris=80000, tex=4096, jpeg=True, normal=True), "mobile": dict(tris=10000, tex=1024, jpeg=False, normal=False)}
 ARM_TRIS = 16000
 ARM_TEX = 2048
 

@@ -30,24 +30,19 @@ SKIN_TEX = os.path.join(HERE, "data", "mh_skin_young_male.png")
 HEIGHT = 1.80          # barefoot; boots add the rest (the hitboxes assume ~1.83 m)
 SOLE = 0.028           # body is lifted by the boot sole thickness
 
-# a big, heavily built soldier: broad shoulders and chest, thick neck and arms, strong jaw
+# an athletic young man (the bulk comes from the clothes and the gear, not from the body)
 DEFAULT_SHAPE = {
     "macrodetails/caucasian-male-young": 1.0,
-    "macrodetails/universal-male-young-maxmuscle-averageweight": 0.7,
-    "macrodetails/universal-male-young-maxmuscle-maxweight": 0.3,
+    "macrodetails/universal-male-young-averagemuscle-averageweight": 0.5,
+    "macrodetails/universal-male-young-maxmuscle-averageweight": 0.5,
+    "macrodetails/proportions/male-young-averagemuscle-averageweight-idealproportions": 0.5,
     "macrodetails/proportions/male-young-maxmuscle-averageweight-idealproportions": 0.5,
-    "macrodetails/proportions/male-young-maxmuscle-maxweight-idealproportions": 0.5,
-    "macrodetails/height/male-young-maxmuscle-maxweight-maxheight": 0.3,
-    "measure/measure-shoulder-increase": 0.7, "measure/measure-bust-increase": 0.35, "measure/measure-neckcirc-increase": 0.7,
-    "measure/measure-upperarm-increase": 0.15, "measure/measure-waist-increase": 0.15,
-    "armslegs/l-upperarm-muscle-incr": 0.25, "armslegs/r-upperarm-muscle-incr": 0.25,
-    "armslegs/l-upperarm-shoulder-muscle-incr": 0.3, "armslegs/r-upperarm-shoulder-muscle-incr": 0.3,
-    "armslegs/l-lowerarm-muscle-incr": 0.3, "armslegs/r-lowerarm-muscle-incr": 0.3,
-    "armslegs/l-upperleg-muscle-incr": 0.5, "armslegs/r-upperleg-muscle-incr": 0.5,
-    "armslegs/l-lowerleg-muscle-incr": 0.4, "armslegs/r-lowerleg-muscle-incr": 0.4,
-    "head/head-square": 0.45, "chin/chin-width-max": 0.4, "chin/chin-prominent-more": 0.25,
-    "neck/neck-scale-horiz-more": 0.5, "neck/neck-scale-depth-more": 0.4,
-    "torso/torso-muscle-pectoral-incr": 0.4, "torso/torso-muscle-dorsi-incr": 0.6, "torso/torso-scale-horiz-incr": 0.3,
+    "macrodetails/height/male-young-maxmuscle-averageweight-maxheight": 0.25,
+    "measure/measure-shoulder-increase": 0.3, "measure/measure-neckcirc-increase": 0.35,
+    "head/head-square": 0.35, "chin/chin-width-max": 0.3, "chin/chin-prominent-more": 0.2,
+    "neck/neck-scale-horiz-more": 0.3, "neck/neck-scale-depth-more": 0.2,
+    "torso/torso-muscle-pectoral-incr": 0.2, "torso/torso-muscle-dorsi-incr": 0.3,
+    "stomach/stomach-pregnant-decr": 0.3,
 }
 
 GAME_BONES = ["Hips", "Spine", "Chest", "Neck", "Head",

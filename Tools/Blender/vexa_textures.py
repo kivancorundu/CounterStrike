@@ -374,12 +374,23 @@ def _image(name, size, non_color, alpha=False):
 
 def _save(img, path, jpeg=False, quality=92):
     """PNG, or JPEG through Pillow (much smaller for 4K color/normal maps)."""
+    try:
+        from PIL import Image
+    except ImportError:
+        Image = None
     if not jpeg:
-        img.filepath_raw = path
-        img.file_format = "PNG"
-        img.save()
+        if Image is None:
+            img.filepath_raw = path
+            img.file_format = "PNG"
+            img.save()
+            return path
+        # Pillow's optimized PNG is about a third smaller than Blender's
+        w, h = img.size
+        px = np.array(img.pixels[:], dtype=np.float32).reshape(h, w, 4)[::-1]
+        mode = "RGBA" if img.alpha_mode != "NONE" and img.depth == 32 else "RGB"
+        data = (np.clip(px if mode == "RGBA" else px[..., :3], 0, 1) * 255 + 0.5).astype(np.uint8)
+        Image.fromarray(data, mode).save(path, optimize=True, compress_level=9)
         return path
-    from PIL import Image
     w, h = img.size
     px = np.array(img.pixels[:], dtype=np.float32).reshape(h, w, 4)[::-1, :, :3]
     Image.fromarray((np.clip(px, 0, 1) * 255 + 0.5).astype(np.uint8)).save(path, quality=quality, subsampling=0)

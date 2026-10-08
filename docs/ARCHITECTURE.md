@@ -128,9 +128,13 @@ Arayüz `Client/UI` altında tamamen C# ile kurulur. UXML/USS dosyası, sahne ve
   - `Editor/VexaModelImport.cs` içe aktarma ayarlarını otomatik yapar: normal haritası, doğrusal maske, PC'de 4K (mobil platformlarda 1K), döngüye giren animasyonlar.
   - `ModelLibrary` bunları yükler. Model yoksa ilkel şekillere geri düşülür; oyun yine çalışır.
 - **Karakter hattı (v3)** (`vexa_human` → `vexa_outfit` → `vexa_factions` → `vexa_characters`):
-  1. MakeHuman'ın CC0 temel insan mesh'i morph hedefleriyle iri yapılı bir askere şekillenir.
+  1. MakeHuman'ın CC0 temel insan mesh'i morph hedefleriyle atletik bir askere şekillenir (hacmi kıyafet ve teçhizat verir).
   2. Geçici bir iskeletle nişan pozuna getirilir: iki kemikli IK ile eller kabza ve el kundağında, parmaklar silahı kavrar.
-  3. Kıyafetler gövdeden kesilir, şişirilir, pürüzsüzleştirilir; kırışık, dikiş ve katmanlar (gömlek < pantolon < kemer < yelek < cep) eklenir.
+  3. Kıyafetler gövdeden bir beden büyük kesilir ve Blender'ın kumaş çözücüsüyle (`vexa_cloth`) yerçekimiyle gövdeye dökülür.
+     - Yaka, manşet ve bel kenarları sabitlenir; kumaş omuz ve kalçaya oturur, aşağı sarkar, kendi kırışıklarını oluşturur.
+     - Üstüne eklem kırışıkları ve dikişler eklenir.
+     - Katman sırası: gömlek < pantolon < kemer < yelek < cep.
+     - Botlar ayak ve bileğin dışbükey kabuklarından yeniden örülür (parmak izi kalmaz).
   4. Teçhizat ışın atışıyla yüzeye oturtulur. Sonuç ~0,5 milyon üçgenlik yüksek poligonlu kaynaktır.
   5. Oyun mesh'i bundan seyreltilir (PC ~60 bin, mobil ~9 bin üçgen), katmanlar birbirine geçmesin diye düzeltilir.
      Ağırlıklar otomatik ağırlıklandırılmış gövdeden aktarılır, tüm dokular yüksek poligondan pişirilir.

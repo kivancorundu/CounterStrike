@@ -139,9 +139,14 @@ def _boundary_rings(bm, limit):
     return dist
 
 
-def inflate(o, offset_fn, relax=4, keep=None, min_gap=0.004, hug=0):
+CLEARANCE = {"bvh": None}
+
+
+def inflate(o, offset_fn, relax=4, keep=None, min_gap=0.004, hug=0, clearance=True):
     """Moves vertices out along their normals by offset_fn(co, rest) and relaxes the surface (removes anatomy),
-    then keeps every vertex at least min_gap above the `keep` surface (a BVHTree)."""
+    then keeps every vertex at least min_gap above the `keep` surface (a BVHTree).
+    Where another part of the body is close in front of a vertex (inner thighs, armpits, arm against the
+    torso) the offset is limited to a fraction of that gap, so neighboring tubes don't grow into each other."""
     me = o.data
     rest = _attr(me, "rest") if "rest" in me.attributes else None
     bm = bmesh.new()
@@ -149,11 +154,20 @@ def inflate(o, offset_fn, relax=4, keep=None, min_gap=0.004, hug=0):
     bm.verts.ensure_lookup_table()
     bm.normal_update()
     ring = _boundary_rings(bm, hug)
+    clear = CLEARANCE["bvh"] if clearance else None
+    moves = []
     for v in bm.verts:
         r = Vector(rest[v.index]) if rest is not None else v.co
         # hems, cuffs and collars hug the skin: the offset fades in over `hug` edge rings from the open edge
         k = 1.0 if hug <= 0 else 0.35 + 0.65 * min(1.0, ring[v.index] / hug)
-        v.co = v.co + v.normal * offset_fn(v.co, r) * k
+        d = offset_fn(v.co, r) * k
+        if clear is not None and d > 0.004:
+            loc, nrm, _, dist = clear.ray_cast(v.co + v.normal * 0.004, v.normal, 0.15)
+            if loc is not None:
+                d = min(d, max(0.002, (dist + 0.004) * 0.35))
+        moves.append(v.normal * d)
+    for v, mv in zip(bm.verts, moves):
+        v.co = v.co + mv
     taubin(bm, relax)
     if keep is not None:
         _keep_above(bm, keep, min_gap)
@@ -399,6 +413,7 @@ class Outfit:
         self.bone = _attr(me, "bone")
         self.co = np.array([v.co[:] for v in me.vertices])
         self.skin = _bvh(body)
+        CLEARANCE["bvh"] = self.skin
         # chest frame (posed): up along the chest, right toward the character's right shoulder
         up = (self.T["Chest"] - self.P["Chest"]).normalized()
         r = (self.P["RightUpperArm"] - self.P["LeftUpperArm"])
@@ -407,6 +422,30 @@ class Outfit:
         self.cf = up.cross(r).normalized()
 
     # -- masks on the body (rest space) --
+    def _edges(self):
+        if not hasattr(self, "_E"):
+            E = np.zeros(len(self.body.data.edges) * 2, dtype=np.int64)
+            self.body.data.edges.foreach_get("vertices", E)
+            self._E = E.reshape(-1, 2)
+        return self._E
+
+    def close_mask(self, m, rings=2):
+        """Morphological closing (dilate, then erode) over the mesh: fills pinholes in a garment region, whose
+        edges would otherwise be pinned in the cloth solve and pull fins out of the fabric."""
+        E = self._edges()
+        m = m.copy()
+        for _ in range(rings):
+            grow = m.copy()
+            grow[E[m[E[:, 0]], 1]] = True
+            grow[E[m[E[:, 1]], 0]] = True
+            m = grow
+        for _ in range(rings):
+            shrink = m.copy()
+            shrink[E[~m[E[:, 0]], 1]] = False
+            shrink[E[~m[E[:, 1]], 0]] = False
+            m = shrink
+        return m
+
     def bones(self, *names):
         idx = [BONE[n] for n in names]
         return np.isin(self.bone, idx)
@@ -459,14 +498,28 @@ class Outfit:
 
     # ------------------------------------------------------------ garments
 
-    def garment(self, name, vmask, material, offset, relax=4, sub=None, folds=None, thick=0.0025, min_gap=0.003, erode=1, keep=None, over=(), hug=3):
-        """over: garments this one is worn on top of (it stays above them as well as the skin)."""
+    def garment(self, name, vmask, material, offset, relax=4, sub=None, folds=None, thick=0.0025, min_gap=0.003, erode=1, keep=None, over=(), hug=3,
+                drape=None, clearance=True):
+        """over: garments this one is worn on top of (it stays above them as well as the skin).
+        drape: cloth-simulate the garment onto the body (dict of vexa_cloth.drape settings); its open edges are pinned."""
         if over:
             keep = [self.skin] + [_bvh(g) for g in over]
+        vmask = self.close_mask(vmask) & (self.bone >= 0)
         o = extract(self.body, vmask, name, material)
-        inflate(o, offset if callable(offset) else (lambda co, r, k=offset: k), relax=relax, keep=keep or self.skin, min_gap=min_gap, hug=hug)
-        subdivide(o, SUB["level"] if sub is None else sub)
-        inflate(o, lambda co, r: 0.0, relax=1, keep=keep or self.skin, min_gap=min_gap)
+        inflate(o, offset if callable(offset) else (lambda co, r, k=offset: k), relax=relax, keep=keep or self.skin, min_gap=min_gap, hug=hug,
+                clearance=clearance)
+        levels = SUB["level"] if sub is None else sub
+        if drape is not None:
+            import vexa_cloth
+            subdivide(o, 1)
+            settings = dict(drape)
+            rings = settings.pop("rings", 1)
+            pins = vexa_cloth.boundary_pins(o, rings)
+            vexa_cloth.drape(o, [self.body] + list(over), pins, **settings)
+            subdivide(o, max(0, levels - 1))
+        else:
+            subdivide(o, levels)
+        inflate(o, lambda co, r: 0.0, relax=1 if drape is None else 0, keep=keep or self.skin, min_gap=min_gap)
         if folds:
             displace(o, folds, keep=keep or self.skin, min_gap=min_gap * 0.6)
         if thick:
@@ -521,7 +574,7 @@ class Outfit:
 
     # ------------------------------------------------------------ pieces
 
-    def shirt(self, material, offset=0.008, collar=True, loose=1.0, sleeve_end=0.045, over=(), hem=None, rolled=False):
+    def shirt(self, material, offset=0.008, collar=True, loose=1.0, sleeve_end=0.045, over=(), hem=None, rolled=False, drape=None):
         """Shirt / jacket. rolled: sleeves rolled up to below the elbow (sleeve_end is then measured from the wrist)."""
         R = self.R
         z = self.rz()
@@ -541,7 +594,11 @@ class Outfit:
                 k += 0.003 * loose
             return k
         fold = lambda co, n, r: self.arm_folds(co, n, r, 0.8 * loose) + self.torso_folds(co, n, r, 0.8 * loose) + fabric_noise(co, 0.0006 * loose, 6.0)
-        sh = self.garment("Shirt", m, material, off, relax=int(8 + 22 * (loose - 1.0) / 0.35), folds=fold, thick=0.003, over=over)
+        if drape is not None:
+            # the solver makes the drape folds; only light compression folds at the joints are added on top
+            fold = lambda co, n, r: 0.45 * (self.arm_folds(co, n, r, loose) + self.torso_folds(co, n, r, loose)) + fabric_noise(co, 0.0003 * loose, 6.0)
+        sh = self.garment("Shirt", m, material, off, relax=int(8 + 22 * (loose - 1.0) / 0.35) if drape is None else 4, folds=fold, thick=0.003,
+                          over=over, drape=drape)
         if rolled:
             for s_ in "rl":
                 wr, el = np.asarray(R["wrist_" + s_]), np.asarray(R["elbow_" + s_])
@@ -554,7 +611,7 @@ class Outfit:
                                bones=(bone, "RightUpperArm" if s_ == "r" else "LeftUpperArm"))
         return sh
 
-    def pants(self, material, offset=0.009, boot_top=0.25, over=()):
+    def pants(self, material, offset=0.009, boot_top=0.25, over=(), drape=None):
         R = self.R
         z = self.rz()
         m = self.bones("Hips", "Spine", "RightUpperLeg", "LeftUpperLeg", "RightLowerLeg", "LeftLowerLeg")
@@ -566,7 +623,10 @@ class Outfit:
                 k += 0.01  # bloused above the boots
             return k
         fold = lambda co, n, r: self.leg_folds(co, n, r, 0.85, boot_top=boot_top) + fabric_noise(co, 0.0007, 6.0, seed=2)
-        return self.garment("Pants", m, material, off, relax=7, folds=fold, thick=0.003, min_gap=0.004, over=over)
+        if drape is not None:
+            fold = lambda co, n, r: 0.45 * self.leg_folds(co, n, r, 0.85, boot_top=boot_top) + fabric_noise(co, 0.0003, 6.0, seed=2)
+        return self.garment("Pants", m, material, off, relax=7 if drape is None else 4, folds=fold, thick=0.003, min_gap=0.004, over=over,
+                            drape=drape)
 
     def gloves(self, material, cuff=0.07):
         R = self.R
@@ -582,10 +642,12 @@ class Outfit:
         R = self.R
         z = self.rz()
         m = self.bones("RightFoot", "LeftFoot") | (self.bones("RightLowerLeg", "LeftLowerLeg") & (z < R["ankle_r"][2] + top - 0.07))
-        def off(co, r):
-            return 0.007 if co.z > 0.06 else 0.009
-        fold = lambda co, n, r: (fabric_noise(co, 0.0012, 14, 7) if co.z > 0.1 else 0.0)
-        b = self.garment("Boots", m, material, off, relax=6, sub=1, folds=fold, thick=0.0035, min_gap=0.005)
+        ank_r, toe_r = Vector(R["ankle_r"]), Vector(R["toe_r"])
+        fwd = (toe_r - ank_r)
+        fwd.z = 0
+        fwd.normalize()
+
+        b = self.boot_shell(m, material)
         # flat walking surface: the boot bottom becomes the top of the sole
         for v in b.data.vertices:
             if v.co.z < H.SOLE + 0.012:
@@ -600,6 +662,74 @@ class Outfit:
             self.add(self.sole(side + "Sole", pts, sole_mat))
             self.laces(side, b)
         return b
+
+    def boot_shell(self, m, material, gap=0.007):
+        """Boots built from the convex hull of each foot and ankle, remeshed into a clean, even surface: a smooth
+        leather shell with a roomy toe box and a flat sole line (no toes, no arch showing), open at the top."""
+        m = self.close_mask(m) & (self.bone >= 0)
+        top_z = self.co[m][:, 2].max()
+        shells = []
+        for sgn in (-1, 1):
+            side = m & (np.sign(self.co[:, 0]) == sgn)
+            ank_z = self.P["RightFoot" if sgn < 0 else "LeftFoot"].z
+            # two hulls fused by the remesh: the foot (instep, toe box, heel) and the shaft around the ankle
+            bm = bmesh.new()
+            for part in (side & (self.co[:, 2] < ank_z + 0.015), side & (self.co[:, 2] > ank_z - 0.035)):
+                sub = bmesh.new()
+                for p in self.co[part]:
+                    sub.verts.new(p)
+                res = bmesh.ops.convex_hull(sub, input=sub.verts, use_existing_faces=False)
+                bmesh.ops.delete(sub, geom=[g for g in res["geom_interior"] if isinstance(g, bmesh.types.BMVert)], context="VERTS")
+                bmesh.ops.delete(sub, geom=[v for v in sub.verts if not v.link_faces], context="VERTS")
+                bmesh.ops.recalc_face_normals(sub, faces=sub.faces)
+                tmp = bpy.data.meshes.new("_hull")
+                sub.to_mesh(tmp)
+                sub.free()
+                bm.from_mesh(tmp)
+                bpy.data.meshes.remove(tmp)
+            me = bpy.data.meshes.new("BootHull")
+            bm.to_mesh(me)
+            bm.free()
+            o = _link("BootHull", me)
+            rm = o.modifiers.new("Remesh", "REMESH")
+            rm.mode = "VOXEL"
+            rm.voxel_size = 0.0045
+            _apply(o)
+            bm = bmesh.new()
+            bm.from_mesh(o.data)
+            taubin(bm, 6)
+            bm.normal_update()
+            c = sum((v.co for v in bm.verts), Vector()) / max(1, len(bm.verts))
+            for v in bm.verts:
+                n = v.normal if (v.co - c).dot(v.normal) >= 0 else -v.normal
+                v.co = v.co + n * gap
+            # open the top of the shaft; flat sole line
+            bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.calc_center_median().z > top_z], context="FACES")
+            bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+            for v in bm.verts:
+                if v.co.z < H.SOLE + 0.004:
+                    v.co.z = H.SOLE
+            straighten_boundary(bm, 6)
+            bm.to_mesh(o.data)
+            bm.free()
+            o.data.materials.clear()
+            o.data.materials.append(material)
+            shells.append(o)
+        bpy.ops.object.select_all(action="DESELECT")
+        for o in shells:
+            o.select_set(True)
+        bpy.context.view_layer.objects.active = shells[0]
+        bpy.ops.object.join()
+        o = bpy.context.active_object
+        o.name = "Boots"
+        o.data.name = "Boots"
+        inflate(o, lambda co, r: 0.0, relax=0, keep=self.skin, min_gap=0.005, clearance=False)
+        displace(o, lambda co, n, r: (fabric_noise(co, 0.0008, 14, 7) if co.z > 0.1 else 0.0) +
+                 folds_ring(co, self.P["RightFoot"] if co.x < 0 else self.P["LeftFoot"],
+                            self.P["RightLowerLeg"] if co.x < 0 else self.P["LeftLowerLeg"], 0.03, 0.03, 0.012, 0.0015))
+        thicken(o, 0.0035)
+        self.cover(m, erode=1)
+        return self.add(o)
 
     def sole(self, name, pts, material):
         from mathutils.geometry import convex_hull_2d
@@ -746,8 +876,9 @@ class Outfit:
         face = self.bones("Head", "Neck") & (rest[:, 1] < eye_y + 0.03) & (rest[:, 2] > eye_z - 0.13) & (rest[:, 2] < eye_z + 0.045) \
             & (np.abs(rest[:, 0]) < 0.074)
         keep = [self.skin] + ([_bvh(under)] if under is not None else [])
-        mk = self.face_shell("MaskBody", rubber, face, keep, pad=0.012, thickness=0.006)
-        self.cover(face, erode=1)
+        mk = self.face_shell("MaskBody", rubber, face, keep, pad=0.02, thickness=0.006)
+        # only the skin well inside the mask's rim is hidden (the rim must not show a gap into the head)
+        self.cover(face, erode=3)
         ms = _bvh(mk)
         hu = (self.T["Head"] - self.P["Head"]).normalized()
         hf = Vector((0, -1, 0))
@@ -1279,7 +1410,7 @@ class Outfit:
         def straps(co):
             d = co - c0
             return 0.07 < abs(d.dot(cr)) < 0.125 and 0.06 < d.dot(cu) < 0.21
-        self.band("ShoulderStraps", gear, shirt, straps, 0.005, 0.008, bones=("Spine", "Chest"), smooth_base=True)
+        self.band("ShoulderStraps", gear, shirt, straps, 0.005, 0.008, bones=("Spine", "Chest", "Neck"), smooth_base=True)
         fs = _bvh(front)
         if style == "t":
             for k, u in enumerate((-0.055, 0.055)):

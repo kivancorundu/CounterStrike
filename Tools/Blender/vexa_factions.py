@@ -30,6 +30,9 @@ FACTIONS = {
 }
 
 
+# cotton / ripstop drape (vexa_cloth.drape settings)
+DRAPE = dict(frames=40, stiffness=18.0, bending=0.6, mass=0.25, rings=2)
+
 # small round parts that read badly when decimated as hard as cloth (they keep ~10x the density)
 DETAIL_PARTS = ("MaskLens", "LensRim", "Voice", "Grill", "Filter", "Buckle", "QuickRelease", "Antenna")
 
@@ -88,13 +91,12 @@ def build(faction, shape=None):
 
     o = O.Outfit(body, posed, rest_lm, m)
     if faction == "muhafiz":
-        shirt = o.shirt(m["jacket"], offset=0.014, loose=1.0)
-        pants = o.pants(m["pants"], offset=0.02, over=(shirt,))
+        shirt = o.shirt(m["jacket"], offset=0.03, loose=1.0, drape=DRAPE, hem=rest_lm["waist"][2] - 0.035)
+        pants = o.pants(m["pants"], offset=0.036, over=(shirt,), drape=DRAPE)
         belt = o.belt(m["belt"], m["metal"], over=(shirt, pants))
         o.boots(m["boots"], m["sole"])
         gl = o.gloves(m["gloves"])
         o.knuckles(gl, m["polymer"])
-        o.collar(shirt, m["jacket"])
         hood = o.balaclava(m["mask"], holes="face")
         o.gas_mask(m["rubber"], m["lens"], m["metal"], m["strap"], under=hood)
         o.plate_carrier(shirt, m["gear"], m["strap"], m["accent"], m["polymer"], style="ct")
@@ -102,13 +104,13 @@ def build(faction, shape=None):
         o.drop_leg_holster(pants, m["strap"], m["holster"], m["strap"])
         o.cargo_pockets(pants, m["pants"])
     else:
-        shirt = o.shirt(m["jacket"], offset=0.016, loose=1.15, rolled=True, sleeve_end=0.16, collar=False)
-        pants = o.pants(m["pants"], offset=0.022, over=(shirt,))
+        shirt = o.shirt(m["jacket"], offset=0.032, loose=1.0, rolled=True, sleeve_end=0.16, collar=False, drape=DRAPE,
+                        hem=rest_lm["waist"][2] - 0.035)
+        pants = o.pants(m["pants"], offset=0.038, over=(shirt,), drape=DRAPE)
         belt = o.belt(m["belt"], m["metal"], over=(shirt, pants))
         o.belt_holster(belt, m["holster"])
         o.boots(m["boots"], m["sole"])
         o.gloves(m["gloves"])
-        o.collar(shirt, m["jacket"])
         o.balaclava(m["mask"], holes="eyes")
         o.plate_carrier(shirt, m["gear"], m["strap"], m["accent"], m["polymer"], style="t")
         o.cargo_pockets(pants, m["pants"])

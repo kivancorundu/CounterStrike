@@ -90,7 +90,27 @@ def receiver(parts, front, back, h, w, bore, material):
     return o
 
 
-def receiver_detail(recv, parts, rf, rb, rh, rw, bore, ejection=True):
+def engrave_cutter(text, center, size, depth=0.0007):
+    """Text cutter on the weapon's right side (reads left to right seen from the right), for boolean engraving."""
+    cu = bpy.data.curves.new("Engrave", "FONT")
+    cu.body = text
+    cu.size = size
+    cu.extrude = depth / 2
+    cu.align_x = "CENTER"
+    cu.align_y = "CENTER"
+    o = bpy.data.objects.new("Engrave", cu)
+    bpy.context.collection.objects.link(o)
+    from mathutils import Matrix
+    rot = Matrix(((0, 0, -1), (-1, 0, 0), (0, 1, 0)))  # columns: text X -> -Y, text Y -> +Z, text Z -> -X
+    o.matrix_world = Matrix.Translation(Vector(center)) @ rot.to_4x4()
+    bpy.ops.object.select_all(action="DESELECT")
+    o.select_set(True)
+    bpy.context.view_layer.objects.active = o
+    bpy.ops.object.convert(target="MESH")
+    return bpy.context.active_object
+
+
+def receiver_detail(recv, parts, rf, rb, rh, rw, bore, ejection=True, marking=None):
     """PC: real ejection port with the bolt inside, upper/lower split line, a magwell flare."""
     if not DETAIL["fine"]:
         return
@@ -105,6 +125,9 @@ def receiver_detail(recv, parts, rf, rb, rh, rw, bore, ejection=True):
         cutters.append(box(f"Split{s_}", (s_ * rw / 2, (rb - rf) / 2, zc - rh * 0.06), (0.002, rf + rb + 0.02, 0.0012), "Polymer", bevel=False))
         # lightening cuts along the lower receiver
         cutters.append(box(f"Flute{s_}", (s_ * rw / 2, rb * 0.45, zc - rh * 0.3), (0.0024, rb * 0.5, rh * 0.12), "Polymer", bevel=False))
+    if marking:
+        # maker's mark and model on the right side, above the trigger
+        cutters.append(engrave_cutter(marking, (R * rw / 2, rb * 0.42, zc - rh * 0.12), 0.0045))
     cut(recv, cutters)
 
 
@@ -343,7 +366,9 @@ def stock(parts, kind, y0, bore, length, material, drop=0.04):
         st = side_prism("Stock", prof, 0.04, material, round_=0.01)
         if DETAIL["fine"]:
             # sling slot through the stock, a castle nut and the adjustment holes under the buffer tube
-            st = cut(st, [box("SlingSlot", (0, y1 - 0.03, bore - 0.085), (0.06, 0.01, 0.022), "Polymer", bevel_width=0.004)])
+            win = side_prism("StockWindow", [(y1 - 0.075, bore - 0.012), (y1 - 0.045, bore - 0.012), (y1 - 0.045, bore - 0.07), (y1 - 0.06, bore - 0.07)],
+                             0.06, "Polymer", bevel=False)
+            st = cut(st, [box("SlingSlot", (0, y1 - 0.03, bore - 0.085), (0.06, 0.01, 0.022), "Polymer", bevel_width=0.004), win])
             parts.append(cyl("CastleNut", (0, y0 + 0.002, bore - 0.005), (0, y0 + 0.012, bore - 0.005), 0.018, "Steel"))
             for k in range(5):
                 yy = y0 + 0.05 + k * 0.022
@@ -423,7 +448,7 @@ def rifle(p):
     body = p.get("body", "Metal")
     recv = receiver(parts, rf, rb, rh, rw, bore, body)
     grip(parts, p.get("grip_angle", 18), p.get("grip_len", 0.1), material=p.get("grip_mat", "Grip"))
-    receiver_detail(recv, parts, rf, rb, rh, rw, bore, p.get("ejection", True))
+    receiver_detail(recv, parts, rf, rb, rh, rw, bore, p.get("ejection", True), p.get("marking"))
     y = -rf
     hg_kind, hg_len, hg_size, hg_mat = p.get("hg", ("round", 0.2, (0.05, 0.05), "Polymer"))
     y_hg_end = handguard(parts, hg_kind, y, hg_len, bore, hg_size, hg_mat) if hg_len > 0 else y
@@ -549,6 +574,8 @@ def pistol(p):
         for i in range(4):
             for s_ in (-1, 1):
                 cs.append(box(f"FrontSer{i}{s_}", (s_ * sw / 2, -front + 0.018 + i * 0.0042, bore + 0.002), (0.0024, 0.0016, sh * 0.6), "Polymer", bevel=False))
+        if p.get("marking"):
+            cs.append(engrave_cutter(p["marking"], (R * sw / 2, sl - front - 0.075, bore + 0.002), 0.0038))
         # ejection port on top, the barrel hood shows through it
         cs.append(box("EjectCut", (R * 0.003, -front * 0.15, bore + sh * 0.5 + 0.002), (sw * 0.75, 0.034, sh * 0.5), "Polymer", bevel_width=0.001))
         slide = cut(slide, cs)
@@ -800,8 +827,22 @@ def texture_size(wid, level):
     return size if level == "pc" else max(256, size // 4)
 
 
+MARKINGS = {
+    "ak47": "VEXA ARMS  AK-47  7.62x39", "m4a4": "VEXA ARMS  M4A4  5.56 NATO", "m4a1s": "VEXA ARMS  M4A1-S  5.56 NATO",
+    "galil": "VEXA ARMS  GALIL AR  5.56", "famas": "VEXA ARMS  FAMAS", "sg553": "VEXA ARMS  SG 553  5.56", "aug": "VEXA ARMS  AUG",
+    "awp": "VEXA ARMS  AWP  .338 MAG", "ssg08": "VEXA ARMS  SSG 08  .308", "g3sg1": "VEXA ARMS  G3SG1  7.62", "scar20": "VEXA ARMS  SCAR-20  7.62",
+    "mp9": "VEXA  MP9  9MM", "mp7": "VEXA  MP7  4.6", "mp5sd": "VEXA  MP5-SD  9MM", "ump45": "VEXA  UMP-45  .45 ACP", "bizon": "VEXA  PP-BIZON  9MM",
+    "mac10": "VEXA  MAC-10  .45", "m249": "VEXA ARMS  M249  5.56", "negev": "VEXA ARMS  NEGEV  5.56", "nova": "VEXA  NOVA  12 GA",
+    "xm1014": "VEXA  XM1014  12 GA", "mag7": "VEXA  MAG-7  12 GA", "sawedoff": "VEXA  12 GA",
+    "glock": "VEXA  G-18  9X19", "usp": "VEXA  USP-S  .45", "p250": "VEXA  P250  9MM", "elite": "VEXA  DUAL  9MM", "fiveseven": "VEXA  FIVE-SEVEN",
+    "cz75": "VEXA  CZ75-AUTO", "deagle": "VEXA  DESERT EAGLE  .50 AE",
+}
+
+
 def build(wid):
     fn, params = WEAPONS[wid]
+    if wid in MARKINGS and DETAIL["fine"]:
+        params = dict(params, marking=MARKINGS[wid])
     parts, muzzle_p, support_p, eject_p = fn(params)
     o = join(parts, wid)
     empty("Muzzle", muzzle_p, o)
@@ -817,6 +858,7 @@ def main():
     ap.add_argument("--preview", default="")
     ap.add_argument("--textures", action="store_true", help="bake PBR textures (4K for long guns: a few minutes each)")
     ap.add_argument("--levels", default="pc,mobile")
+    ap.add_argument("--samples", type=int, default=4, help="bake samples per texel")
     args = ap.parse_args([a for a in sys.argv[1:] if a != "--"])
     ids = [w for w in args.only.split(",") if w] or list(WEAPONS.keys())
     report = []
@@ -832,7 +874,7 @@ def main():
                 size = texture_size(wid, level)
                 small = wid in SMALL_ITEMS
                 vexa_textures.bake_model(o, os.path.join(args.out, sub, "Textures"), wid, size, normal=level == "pc",
-                                         scale_hint=0.6 if small else 1.0, samples=8, jpeg=level == "pc")
+                                         scale_hint=0.6 if small else 1.0, samples=args.samples, jpeg=level == "pc")
             export_fbx(os.path.join(args.out, sub, wid + ".fbx"), [o])
             report.append((level, wid, tri_count(o)))
             print(f"{level:7} {wid:12} {tri_count(o):6} tris", flush=True)
