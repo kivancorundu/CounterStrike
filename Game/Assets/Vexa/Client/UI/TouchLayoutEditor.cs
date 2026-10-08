@@ -18,11 +18,22 @@ namespace Vexa.Client.UI
         private bool _resize;
         private Vector2 _grab;
 
+        static TouchLayoutEditor _current;
+        public static bool IsOpen => _current != null && _current.panel != null;
+
         public static void Open(VisualElement anywhere)
         {
             var root = anywhere?.panel?.visualTree;
             if (root == null) return;
-            root.Add(new TouchLayoutEditor());
+            CloseCurrent();
+            _current = new TouchLayoutEditor();
+            root.Add(_current);
+        }
+
+        public static void CloseCurrent()
+        {
+            _current?.RemoveFromHierarchy();
+            _current = null;
         }
 
         public TouchLayoutEditor()
@@ -39,7 +50,7 @@ namespace Vexa.Client.UI
             inner.Kids(U.Head("BUTON YERLEŞİMİ", 22, null, Fonts.Display, 2),
                        U.Text("Sürükle: taşı · sağ alt köşe: boyutlandır", 14, Fonts.Body, Theme.Muted).Margin(0, 12, 0, 12),
                        new UButton("VARSAYILAN", ButtonStyle.Ghost, () => Load(TouchControls.DefaultLayout()), 16),
-                       new UButton("İPTAL", ButtonStyle.Ghost, RemoveFromHierarchy, 16),
+                       new UButton("İPTAL", ButtonStyle.Ghost, CloseCurrent, 16),
                        new UButton("KAYDET", ButtonStyle.Primary, Save, 18).H(44));
             bar.Add(inner);
             hierarchy.Add(bar);
@@ -96,8 +107,8 @@ namespace Vexa.Client.UI
             var n = _drag.Btn.Norm;
             if (_resize)
             {
-                n.width = Mathf.Clamp(p.x / w - n.x, 0.04f, 0.3f);
-                n.height = Mathf.Clamp(p.y / h - n.y, 0.05f, 0.3f);
+                n.width = Mathf.Clamp(p.x / w - n.x, 0.04f, Mathf.Min(0.3f, 1f - n.x));
+                n.height = Mathf.Clamp(p.y / h - n.y, 0.05f, Mathf.Min(0.3f, 1f - n.y));
             }
             else
             {
@@ -127,7 +138,7 @@ namespace Vexa.Client.UI
             VexaSettings.TouchLayout = TouchControls.Serialize(list);
             VexaSettings.Save();
             GameSession.Current?.Input.Touch.ApplySaved(VexaSettings.TouchLayout);
-            RemoveFromHierarchy();
+            CloseCurrent();
         }
     }
 }

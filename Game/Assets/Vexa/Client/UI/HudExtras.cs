@@ -129,6 +129,8 @@ namespace Vexa.Client.UI
             }
         }
 
+        public void SubmitChat() => SendChat();
+
         void SendChat()
         {
             var text = _chatField.value;

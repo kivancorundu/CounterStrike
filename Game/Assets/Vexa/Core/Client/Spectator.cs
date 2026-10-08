@@ -58,6 +58,9 @@ namespace Vexa.Core.Client
             _targetDiedAt = -1;
         }
 
+        /// <summary>Keep watching this player if they're still watchable (used after a demo seek).</summary>
+        public void Prefer(int id) { Target = id; _targetDiedAt = -1; }
+
         public void Watch(int id) { if (_candidates.Contains(id)) { Target = id; _targetDiedAt = -1; } }
         public void ToggleMode() => Mode = Mode == ViewMode.InEye ? ViewMode.Chase : ViewMode.InEye;
         public void Reset() { Target = 0; _targetDiedAt = -1; }

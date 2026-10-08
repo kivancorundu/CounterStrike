@@ -27,10 +27,10 @@ namespace Vexa.Client.Audio
         private GameSession _s;
         private readonly Dictionary<int, Mover> _movers = new Dictionary<int, Mover>();
         private readonly Mover _local = new Mover();
-        private readonly Dictionary<int, AudioSource> _fireLoops = new Dictionary<int, AudioSource>();
+        private readonly Dictionary<int, AudioSource> _fireLoops = new Dictionary<int, AudioSource>(); // own sources, never pooled
         private readonly HashSet<int> _seenFires = new HashSet<int>();
         private readonly List<int> _gone = new List<int>();
-        private float _nextBeep;
+        private float _beepTimer;
         private bool _wasFlashed, _wasPlanting;
 
         static AudioSource _ui;
@@ -79,13 +79,18 @@ namespace Vexa.Client.Audio
                 _pool.Add(a);
                 return a;
             }
-            // reuse the oldest voice
+            // prefer an idle voice, otherwise steal the oldest
+            for (int i = 0; i < _pool.Count; i++)
+            {
+                var cand = _pool[(_next + i) % _pool.Count];
+                if (!cand.isPlaying) { _next = (_next + i + 1) % _pool.Count; return cand; }
+            }
             var src = _pool[_next];
             _next = (_next + 1) % _pool.Count;
             return src;
         }
 
-        public void Play3D(string clip, Vector3 pos, float volume = 1f, float maxDistance = 60f, float pitchJitter = 0.04f)
+        public void Play3D(string clip, Vector3 pos, float volume = 1f, float maxDistance = 60f, float pitchJitter = 0.04f, float pitch = 1f)
         {
             if (Quiet) return;
             var c = SoundSynth.Get(clip);
@@ -94,7 +99,7 @@ namespace Vexa.Client.Audio
             a.transform.position = pos;
             a.spatialBlend = 1f;
             a.minDistance = 1.5f; a.maxDistance = maxDistance;
-            a.pitch = 1f + Random.Range(-pitchJitter, pitchJitter);
+            a.pitch = pitch * (1f + Random.Range(-pitchJitter, pitchJitter));
             a.volume = volume;
             a.clip = c;
             a.loop = false;
@@ -143,8 +148,7 @@ namespace Vexa.Client.Audio
             if (local) Play2D(clip, 0.9f, pitch);
             else
             {
-                Play3D(clip, shot.Origin.ToU(), 1f, silenced ? 25f : (def != null && def.Category == WeaponCategory.Sniper ? 140f : 90f), 0.03f);
-                if (_pool.Count > 0) _pool[(_next + _pool.Count - 1) % _pool.Count].pitch *= pitch;
+                Play3D(clip, shot.Origin.ToU(), 1f, silenced ? 25f : (def != null && def.Category == WeaponCategory.Sniper ? 140f : 90f), 0.03f, pitch);
             }
         }
 
@@ -200,7 +204,7 @@ namespace Vexa.Client.Audio
 
         public void Update(float dt)
         {
-            if (_c == null || !_c.Welcomed || Quiet) return;
+            if (_c == null || !_c.Welcomed || Quiet || dt <= 0f) return;
             // remote footsteps / landings / reloads
             foreach (var r in _c.Remotes)
             {
@@ -229,10 +233,11 @@ namespace Vexa.Client.Audio
             {
                 float left = _c.BombTimeLeft;
                 float period = Mathf.Lerp(0.12f, 1f, Mathf.Clamp01(left / 40f));
-                if (Time.time >= _nextBeep && left > 0.05f)
+                _beepTimer -= dt; // dt is demo time in demos, so pause and speed apply
+                if (_beepTimer <= 0 && left > 0.05f)
                 {
                     Play3D("bomb_beep", _c.Bomb.Position.ToU() + Vector3.up * 0.1f, 1f, 45f, 0);
-                    _nextBeep = Time.time + period;
+                    _beepTimer = period;
                 }
             }
 
@@ -242,15 +247,18 @@ namespace Vexa.Client.Audio
             {
                 _seenFires.Add(f.Id);
                 if (_fireLoops.ContainsKey(f.Id)) continue;
-                var a = Source();
-                a.transform.position = f.Center.ToU();
+                var go = new GameObject("FireLoop");
+                go.transform.SetParent(_root.transform, false);
+                go.transform.position = f.Center.ToU();
+                var a = go.AddComponent<AudioSource>();
+                a.playOnAwake = false; a.dopplerLevel = 0; a.rolloffMode = AudioRolloffMode.Linear;
                 a.spatialBlend = 1; a.minDistance = 2; a.maxDistance = 30; a.pitch = 1; a.volume = 0.7f;
                 a.clip = SoundSynth.Get("fire_loop"); a.loop = true; a.Play();
                 _fireLoops[f.Id] = a;
             }
             _gone.Clear();
             foreach (var kv in _fireLoops) if (!_seenFires.Contains(kv.Key)) _gone.Add(kv.Key);
-            foreach (var id in _gone) { var a = _fireLoops[id]; if (a != null) { a.loop = false; a.Stop(); } _fireLoops.Remove(id); }
+            foreach (var id in _gone) { var a = _fireLoops[id]; if (a != null) Object.Destroy(a.gameObject); _fireLoops.Remove(id); }
         }
 
         void Steps(Mover m, NVec3 pos, NVec3 vel, bool onGround, bool local, float dt)
@@ -289,7 +297,7 @@ namespace Vexa.Client.Audio
 
         public void Clear()
         {
-            foreach (var a in _fireLoops.Values) if (a != null) a.Stop();
+            foreach (var a in _fireLoops.Values) if (a != null) Object.Destroy(a.gameObject);
             _fireLoops.Clear();
             if (_root != null) Object.Destroy(_root);
             _root = null;

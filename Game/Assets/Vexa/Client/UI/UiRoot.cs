@@ -93,6 +93,7 @@ namespace Vexa.Client.UI
         void Update()
         {
             VexaSettings.FlushIfDue();
+            SettingsView.PollActiveRebind();
             var s = GameSession.Current;
             if (s != null && s.Failed)
             {
@@ -107,11 +108,13 @@ namespace Vexa.Client.UI
             {
                 case Screen.Menu:
                     _backdrop.Tick(Time.unscaledDeltaTime);
+                    Audio.SoundSynth.PrewarmStep();
                     GameSession.InputBlocked = true;
                     UnityEngine.Cursor.lockState = CursorLockMode.None; UnityEngine.Cursor.visible = true;
                     break;
                 case Screen.Loading:
                     _loading.Tick(s);
+                    Audio.SoundSynth.PrewarmStep(); // build sounds while loading, not on first use
                     GameSession.InputBlocked = true;
                     break;
                 case Screen.Game:
@@ -122,6 +125,7 @@ namespace Vexa.Client.UI
 
         void Enter(Screen screen, GameSession s)
         {
+            TouchLayoutEditor.CloseCurrent();
             _screen = screen;
             _session = s;
             _menu.Show(screen == Screen.Menu);
@@ -168,11 +172,19 @@ namespace Vexa.Client.UI
             bool matchOver = c.Header.Phase == GamePhase.MatchOver;
             bool rounds = c.Mode == GameMode.Competitive || c.Mode == GameMode.Casual;
             bool chat = _hud.ChatOpen;
-            if (chat) _chatClosedFrame = Time.frameCount;
+            if (chat)
+            {
+                _chatClosedFrame = Time.frameCount;
+                // the text field may have lost focus (cursor is free while typing): keys still work
+                if (PcInput.KeyDown(KeyCode.Escape)) _hud.CloseChat();
+                else if (PcInput.KeyDown(KeyCode.Return) || PcInput.KeyDown(KeyCode.KeypadEnter)) _hud.SubmitChat();
+            }
             bool typingJustEnded = Time.frameCount - _chatClosedFrame <= 1;
 
             // ---- keys (none while typing in chat) ----
-            if (!chat && !typingJustEnded)
+            bool editor = TouchLayoutEditor.IsOpen;
+            if (editor && PcInput.KeyDown(KeyCode.Escape)) TouchLayoutEditor.CloseCurrent();
+            else if (!chat && !typingJustEnded && !SettingsView.Rebinding)
             {
                 if (PcInput.KeyDown(KeyCode.Escape))
                 {
@@ -212,7 +224,7 @@ namespace Vexa.Client.UI
 
             _hud.Tick(Time.unscaledDeltaTime);
 
-            bool blocked = _buyOpen || _pauseOpen || _matchEndShown || _hud.ChatOpen;
+            bool blocked = _buyOpen || _pauseOpen || _matchEndShown || _hud.ChatOpen || editor;
             GameSession.InputBlocked = blocked;
             // demos keep the mouse free for the playback bar
             s.Input.SetCursorLock(!blocked && !s.IsDemo);

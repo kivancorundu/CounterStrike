@@ -166,17 +166,23 @@ namespace Vexa.Client
             {
                 if (time < Demo.Time)
                 {
+                    int watched = Spectate.Target;
                     StartDemoClient(Demo.File);
+                    Spectate.Prefer(watched);
                     _world.Clear();
                     _effects.Clear();
                     ClientReplaced?.Invoke();
                 }
-                const double step = 1.0 / 32;
+                // coarse steps: only the end state matters while seeking
+                const double step = 0.1;
+                Client.Update(0, () => default);
                 while (Demo.Time + step < time)
                 {
                     Demo.Advance(step);
                     Client.Update(step, () => default);
                 }
+                Demo.Advance(Math.Max(0, time - Demo.Time));
+                Client.Update(1.0 / 64, () => default);
             }
             finally { Seeking = false; }
         }
@@ -282,7 +288,7 @@ namespace Vexa.Client
             _camera.Update(this, dt);
             _effects.Update(dt);
             _world.Update(Client, dt);
-            _audio.Update(dt);
+            _audio.Update(IsDemo ? (DemoPaused ? 0f : dt * DemoSpeed) : dt);
         }
 
         void UpdateSpectating()
@@ -373,6 +379,7 @@ namespace Vexa.Client
 
         void OnDestroy()
         {
+            HostServer?.StopRecording(); // flush the demo if the app quits mid-match
             _clientNet?.Dispose();
             _serverNet?.Dispose();
             if (Current == this) Current = null;

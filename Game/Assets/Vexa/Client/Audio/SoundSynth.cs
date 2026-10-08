@@ -14,6 +14,22 @@ namespace Vexa.Client.Audio
         public const int Rate = 44100;
         static readonly Dictionary<string, AudioClip> _clips = new Dictionary<string, AudioClip>();
 
+        static readonly string[] All =
+        {
+            "gun_pistol", "gun_smg", "gun_rifle", "gun_sniper", "gun_shotgun", "gun_heavy", "gun_silenced", "knife", "dryfire", "reload", "deploy",
+            "step_concrete", "step_concrete2", "step_wood", "step_wood2", "step_metal", "step_metal2", "step_sand", "step_sand2", "land",
+            "explosion", "c4_explosion", "flashbang", "flash_ring", "smoke", "molotov", "fire_loop", "nade_bounce", "pin",
+            "bomb_beep", "bomb_planted", "bomb_defused", "bomb_press", "hit_body", "hit_head", "hurt", "kill",
+            "round_win", "round_lose", "round_start", "buy", "denied", "ui_click", "ui_hover", "chat",
+        };
+        static int _prewarm;
+
+        /// <summary>Builds one clip per call (menus / loading screen) so no sound is synthesized mid-game.</summary>
+        public static void PrewarmStep()
+        {
+            if (_prewarm < All.Length) Get(All[_prewarm++]);
+        }
+
         public static AudioClip Get(string name)
         {
             if (_clips.TryGetValue(name, out var c)) return c;

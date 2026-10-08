@@ -35,6 +35,7 @@ namespace Vexa.Client.UI
             hierarchy.Add(tabCol);
             hierarchy.Add(_content);
             Select(0);
+            RegisterCallback<DetachFromPanelEvent>(_ => EndRebind());
         }
 
         private int _current;
@@ -44,6 +45,7 @@ namespace Vexa.Client.UI
 
         public void Select(int i)
         {
+            EndRebind();
             _current = i;
             for (int k = 0; k < _tabs.Count; k++) _tabs[k].Selected = k == i;
             _content.Clear();
@@ -239,7 +241,6 @@ namespace Vexa.Client.UI
         // ---------------- key bindings ----------------
         private InputAction? _rebinding;
         private UButton _rebindButton;
-        private IVisualElementScheduledItem _rebindPoll;
 
         VisualElement ControlsPage()
         {
@@ -264,34 +265,51 @@ namespace Vexa.Client.UI
             return p;
         }
 
+        /// <summary>The settings view currently waiting for a key (polled every frame by UiRoot).</summary>
+        static SettingsView _activeRebind;
+        private int _rebindStartFrame;
+        static int _escConsumedFrame = -1;
+        /// <summary>True while waiting for a key, and on the frame Esc cancelled it (so Esc doesn't also close menus).</summary>
+        public static bool Rebinding => _activeRebind != null || _escConsumedFrame == Time.frameCount;
+
         void BeginRebind(InputAction a, UButton button)
         {
-            if (_rebindButton != null) _rebindButton.Text = KeyBindings.KeyName(KeyBindings.Get(_rebinding.Value));
+            EndRebind();
             _rebinding = a;
             _rebindButton = button;
-            button.Text = "TUŞA BAS...";
-            _rebindPoll?.Pause();
-            // start listening a moment later so the click that started this isn't captured
-            _rebindPoll = schedule.Execute(PollRebind).StartingIn(150).Every(16);
+            _rebindStartFrame = Time.frameCount;
+            button.Text = "TUŞA BAS... (Esc iptal)";
+            _activeRebind = this;
         }
 
-        void PollRebind()
+        static bool Displayed(VisualElement e)
         {
-            if (_rebinding == null) { _rebindPoll?.Pause(); return; }
-            if (PcInput.KeyDown(KeyCode.Escape)) { EndRebind(); return; }
-            if (PcInput.AnyKeyDown(out var k))
-            {
-                KeyBindings.Set(_rebinding.Value, k);
-                EndRebind();
-                Select(_current); // other actions may have lost this key
-            }
+            if (e.panel == null) return false;
+            for (var v = e; v != null; v = v.parent) if (v.resolvedStyle.display == DisplayStyle.None) return false;
+            return true;
+        }
+
+        /// <summary>Called once per frame. Captures the next key; mouse buttons only count while the pointer is over the button.</summary>
+        public static void PollActiveRebind()
+        {
+            var v = _activeRebind;
+            if (v == null) return;
+            if (v._rebinding == null || v._rebindButton == null || !Displayed(v._rebindButton)) { v.EndRebind(); return; }
+            if (Time.frameCount - v._rebindStartFrame < 2) return; // ignore the click that started it
+            if (PcInput.KeyDown(KeyCode.Escape)) { _escConsumedFrame = Time.frameCount; v.EndRebind(); return; }
+            if (!PcInput.AnyKeyDown(out var k)) return;
+            bool mouse = k >= KeyCode.Mouse0 && k <= KeyCode.Mouse6;
+            if (mouse && !v._rebindButton.Hovered) { v.EndRebind(); return; } // clicked somewhere else: cancel
+            KeyBindings.Set(v._rebinding.Value, k);
+            v.EndRebind();
+            v.Select(v._current); // other actions may have lost this key
         }
 
         void EndRebind()
         {
             if (_rebinding != null && _rebindButton != null) _rebindButton.Text = KeyBindings.KeyName(KeyBindings.Get(_rebinding.Value));
             _rebinding = null; _rebindButton = null;
-            _rebindPoll?.Pause();
+            if (_activeRebind == this) _activeRebind = null;
         }
 
         // ---------------- mobile ----------------

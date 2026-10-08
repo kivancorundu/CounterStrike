@@ -346,6 +346,7 @@ namespace Vexa.Client.UI
         }
 
         public void SetClick(Action a) => _onClick = a;
+        public bool Hovered => _hover;
         public bool Selected { get => _selected; set { if (_selected != value) { _selected = value; Refresh(); } } }
         public bool Enabled { get => _enabled; set { if (_enabled != value) { _enabled = value; Refresh(); } } }
         public string Text { get => Label.text; set => Label.text = value; }

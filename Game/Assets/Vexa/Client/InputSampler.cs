@@ -1,9 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
 using Vexa.Core;
-#if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
-using UnityEngine.InputSystem;
-#endif
 
 namespace Vexa.Client
 {
@@ -154,7 +151,7 @@ namespace Vexa.Client
         private Vector2 _lastLook;
         private readonly HashSet<int> _btnFingers = new HashSet<int>();
 
-        public void Reset() { Buttons = Core.Buttons.None; LookDelta = Vector2.zero; StickActive = false; _stickFinger = _lookFinger = -1; }
+        public void Reset() { Buttons = Core.Buttons.None; LookDelta = Vector2.zero; StickActive = false; _stickFinger = _lookFinger = -1; _btnFingers.Clear(); }
 
         public void Update(int w, int h)
         {
@@ -223,7 +220,7 @@ namespace Vexa.Client
         {
             _list.Clear();
 #if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
-            var ts = Touchscreen.current;
+            var ts = UnityEngine.InputSystem.Touchscreen.current;
             if (ts == null) return _list;
             foreach (var t in ts.touches)
             {
@@ -262,7 +259,7 @@ namespace Vexa.Client
 #if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
             var g = UnityEngine.InputSystem.Gyroscope.current;
             if (g == null) return Vector3.zero;
-            if (!_enabled) { InputSystem.EnableDevice(g); _enabled = true; }
+            if (!_enabled) { UnityEngine.InputSystem.InputSystem.EnableDevice(g); _enabled = true; }
             return g.angularVelocity.ReadValue();
 #else
             if (!SystemInfo.supportsGyroscope) return Vector3.zero;
