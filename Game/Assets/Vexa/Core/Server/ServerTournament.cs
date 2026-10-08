@@ -383,8 +383,14 @@ namespace Vexa.Core.Server
                         else { RemovePlayer(p); OnPlayerLeft(p); }
                         return "kicked " + p.Name;
                     }
+                case "record":
+                    if (string.IsNullOrEmpty(arg)) return "usage: record <file.vxdemo>";
+                    try { StartRecording(arg); return "recording to " + arg; } catch (Exception e) { return "failed: " + e.Message; }
+                case "stoprecord":
+                    StopRecording();
+                    return "recording stopped";
                 case "help":
-                    return "status | say <text> | pause | unpause | forceready | skipknife | restart | kick <name|id>";
+                    return "status | say <text> | pause | unpause | forceready | skipknife | restart | kick <name|id> | record <file> | stoprecord";
                 default:
                     return "unknown command (help)";
             }

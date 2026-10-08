@@ -10,9 +10,10 @@ using Vexa.Net;
 // vexa-server --port 27015 --tick 64 --map kasaba --mode competitive --difficulty 0.5
 // modes: competitive (5v5 MR12, bots fill empty slots), casual, deathmatch, practice
 // tournament: vexa-server --config match.json   (team names, rosters, knife round, ready-up, results file)
+// demo:  --record match.vxdemo   (or "demoPath" in the match file; plays back in the game's DEMOLAR menu)
 // console: type "help" for admin commands (status, say, pause, unpause, forceready, restart, kick)
 int port = 27015, tick = 64, bots = 0, maxPlayers = 12;
-string mapName = "training", modeName = "deathmatch", configPath = null;
+string mapName = "training", modeName = "deathmatch", configPath = null, recordPath = null;
 float difficulty = 0.5f;
 for (int i = 0; i < args.Length - 1; i++)
 {
@@ -25,6 +26,7 @@ for (int i = 0; i < args.Length - 1; i++)
         case "--max-players": maxPlayers = int.Parse(args[++i]); break;
         case "--mode": modeName = args[++i].ToLowerInvariant(); break;
         case "--config": configPath = args[++i]; break;
+        case "--record": recordPath = args[++i]; break;
         case "--difficulty": difficulty = float.Parse(args[++i], System.Globalization.CultureInfo.InvariantCulture); break;
     }
 }
@@ -54,6 +56,7 @@ string mapPath = Path.Combine(AppContext.BaseDirectory, "Maps", mapName + ".vxma
 if (!File.Exists(mapPath)) { Console.WriteLine("map not found: " + mapPath); return 1; }
 var map = MapData.Parse(File.ReadAllText(mapPath));
 using var transport = LiteNetTransport.StartServer(port, maxPlayers);
+if (recordPath != null) config.DemoPath = recordPath;
 var game = new ServerGame(transport, map, tick, config);
 game.Log += m => Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] {m}");
 for (int i = 0; i < bots; i++) game.AddBot("Bot " + (i + 1));
@@ -107,5 +110,6 @@ while (running)
         statT = now; worst = 0;
     }
 }
+game.StopRecording();
 Console.WriteLine("server stopped");
 return 0;

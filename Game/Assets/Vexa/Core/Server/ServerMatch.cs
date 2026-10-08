@@ -36,6 +36,7 @@ namespace Vexa.Core.Server
         public string ResultsPath;              // results JSON is written here when the match ends
         public string MatchId;                  // external id (e.g. a rally.gg match), echoed in the results
         public string Map;                      // optional map name from the match file
+        public string DemoPath;                 // record the match to this .vxdemo file
 
         public bool HasRounds => Mode == GameMode.Competitive || Mode == GameMode.Casual;
 
@@ -83,6 +84,7 @@ namespace Vexa.Core.Server
             c.FillBots = d.Bool("fillBots", false);
             c.BotDifficulty = d.Num("botDifficulty", c.BotDifficulty);
             c.ResultsPath = d.Str("resultsPath", null);
+            c.DemoPath = d.Str("demoPath", null);
             return c;
         }
         public bool HasEconomy => HasRounds;
@@ -487,6 +489,7 @@ namespace Vexa.Core.Server
             SendScoreboards();
             Info($"match over: {winner} {_score[1]}:{_score[2]}");
             PublishResults(winner);
+            StopRecording();
         }
 
         // ---------------- kills & economy ----------------
@@ -872,10 +875,11 @@ namespace Vexa.Core.Server
             foreach (var to in _players)
             {
                 if (to.Peer < 0) continue;
-                _w.Reset(); _w.Byte((byte)Msg.Scoreboard); _w.Byte((byte)_players.Count);
+                _w.Reset(); _w.Byte((byte)Msg.Scoreboard); _w.Byte((byte)_players.Count(x => !x.Hidden));
                 foreach (var p in _players)
                 {
-                    bool showMoney = Config.Mode != GameMode.Competitive && Config.Mode != GameMode.Casual || p.State.Team == to.State.Team || Phase == GamePhase.MatchOver;
+                    if (p.Hidden) continue;
+                    bool showMoney = Config.Mode != GameMode.Competitive && Config.Mode != GameMode.Casual || p.State.Team == to.State.Team || to.State.Team == Team.None || Phase == GamePhase.MatchOver;
                     Protocol.WriteScore(_w, new ScoreEntry
                     {
                         Id = p.Id, Team = p.State.Team, Alive = p.State.Alive, IsBot = p.IsBot, Money = showMoney ? p.Money : -1,

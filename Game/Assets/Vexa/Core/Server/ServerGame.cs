@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Vexa.Core.Net;
 
@@ -33,6 +34,7 @@ namespace Vexa.Core.Server
             public bool IsBot => Peer < 0;
             public Team PreferredTeam;
             public bool MatchReady;          // typed .ready in a tournament warmup
+            public bool Hidden;              // the demo recorder ("VEXA TV"): receives everything, appears nowhere
 
             // match stats
             public int Money;
@@ -57,6 +59,9 @@ namespace Vexa.Core.Server
         public const float MaxTimeCreditSeconds = 0.5f; // command clock may never get more than this ahead of real time
 
         private readonly ITransport _net;
+        private readonly DemoTap _tap;
+        private Player _recorder;
+        public bool IsRecording => _recorder != null;
         private readonly Dictionary<int, Player> _byPeer = new Dictionary<int, Player>();
         private readonly Dictionary<int, Player> _byId = new Dictionary<int, Player>();
         private readonly List<Player> _players = new List<Player>();
@@ -78,7 +83,7 @@ namespace Vexa.Core.Server
 
         public ServerGame(ITransport net, MapData map, int tickRate = 64, MatchConfig config = null, int seed = 1234)
         {
-            _net = net;
+            _net = _tap = new DemoTap(net);
             Map = map;
             World = map.BuildCollision();
             TickRate = tickRate;
@@ -91,6 +96,11 @@ namespace Vexa.Core.Server
             _net.Disconnected += OnDisconnected;
             _net.Received += OnReceived;
             InitMatch();
+            if (!string.IsNullOrEmpty(Config.DemoPath))
+            {
+                try { StartRecording(Config.DemoPath); }
+                catch (Exception e) { Info("could not start demo recording: " + e.Message); }
+            }
         }
 
         public Player GetPlayer(int id) => id >= 0 && _byId.TryGetValue(id, out var p) ? p : null;
@@ -105,9 +115,9 @@ namespace Vexa.Core.Server
             return p;
         }
 
-        private Player NewPlayer(int peer, string name, Team team)
+        private Player NewPlayer(int peer, string name, Team team, bool hidden = false)
         {
-            var p = new Player { Id = _nextId++, Peer = peer, Name = name };
+            var p = new Player { Id = _nextId++, Peer = peer, Name = name, Hidden = hidden };
             if (Config.Mode == GameMode.Deathmatch) team = Team.None;
             p.State = PlayerState.Spawn(team == Team.None ? Team.T : team, Vector3.Zero, 0);
             p.State.Team = team;
@@ -125,6 +135,7 @@ namespace Vexa.Core.Server
             if (p.State.HasC4) DropBomb(p);
             _byId.Remove(p.Id); _players.Remove(p); _history.Remove(p.Id);
             if (p.Peer >= 0) _byPeer.Remove(p.Peer);
+            if (p.Hidden) return;
             _w.Reset(); _w.Byte((byte)Msg.PlayerLeft); _w.Byte((byte)p.Id);
             SendAll(Delivery.ReliableOrdered);
         }
@@ -156,11 +167,7 @@ namespace Vexa.Core.Server
                         if (name.Length > 24) name = name.Substring(0, 24);
                         var team = TeamForJoin(name);
                         MakeRoomOnTeam(team);
-                        p = NewPlayer(peer, name, team);
-                        p.Ready = true;
-                        _w.Reset(); _w.Byte((byte)Msg.Welcome); _w.Byte((byte)p.Id); _w.UShort((ushort)TickRate); _w.Int(Tick); _w.String(Map.Name);
-                        _net.Send(peer, _w.Data, _w.Length, Delivery.ReliableOrdered);
-                        foreach (var o in _players) if (o != p) SendPlayerInfo(peer, o);
+                        p = Join(peer, name, team, false);
                         Info($"{name} joined as #{p.Id} ({team})");
                         OnPlayerJoined(p);
                         SendMatchState(p);
@@ -199,6 +206,46 @@ namespace Vexa.Core.Server
             }
         }
 
+        private Player Join(int peer, string name, Team team, bool hidden)
+        {
+            var p = NewPlayer(peer, name, team, hidden);
+            p.Ready = true;
+            _w.Reset(); _w.Byte((byte)Msg.Welcome); _w.Byte((byte)p.Id); _w.UShort((ushort)TickRate); _w.Int(Tick); _w.String(Map.Name);
+            _net.Send(peer, _w.Data, _w.Length, Delivery.ReliableOrdered);
+            foreach (var o in _players) if (o != p && !o.Hidden) SendPlayerInfo(peer, o);
+            return p;
+        }
+
+        // ---------------- demo recording ("VEXA TV") ----------------
+
+        /// <summary>Records everything a hidden spectator receives into <paramref name="stream"/> (see <see cref="DemoFile"/>).</summary>
+        public void StartRecording(System.IO.Stream stream)
+        {
+            if (_recorder != null) StopRecording();
+            _tap.Writer = new DemoWriter(stream, Map.Name, TickRate, () => Tick * (double)Dt);
+            _recorder = Join(DemoTap.Peer, "VEXA TV", Team.None, true);
+            SendMatchState(_recorder);
+            SendScoreboards();
+            Info("demo recording started");
+        }
+
+        public void StartRecording(string path)
+        {
+            var dir = System.IO.Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir)) System.IO.Directory.CreateDirectory(dir);
+            StartRecording(System.IO.File.Create(path));
+        }
+
+        public void StopRecording()
+        {
+            if (_recorder == null) return;
+            RemovePlayer(_recorder);
+            _recorder = null;
+            _tap.Writer?.Dispose();
+            _tap.Writer = null;
+            Info("demo recording stopped");
+        }
+
         internal void SendAll(Delivery d)
         {
             foreach (var p in _players) if (p.Peer >= 0) _net.Send(p.Peer, _w.Data, _w.Length, d);
@@ -214,6 +261,7 @@ namespace Vexa.Core.Server
 
         internal void BroadcastPlayerInfo(Player p)
         {
+            if (p.Hidden) return;
             WritePlayerInfo(p);
             SendAll(Delivery.ReliableOrdered);
         }
@@ -489,18 +537,18 @@ namespace Vexa.Core.Server
                 _w.Int(Tick);
                 _w.Int(p.LastCmdTick);
                 Protocol.WriteState(_w, p.State);
-                _w.Byte((byte)(_players.Count - 1));
+                _w.Byte((byte)(_players.Count(o => o != p && !o.Hidden)));
                 foreach (var o in _players)
                 {
-                    if (o == p) continue;
+                    if (o == p || o.Hidden) continue;
                     var st = o.State;
-                    // don't leak who carries the bomb to the enemy team
-                    if (st.Team != p.State.Team && Config.Mode != GameMode.Practice) st.HasC4 = false;
+                    // don't leak who carries the bomb to the enemy team (spectators see everything)
+                    if (st.Team != p.State.Team && p.State.Team != Team.None && Config.Mode != GameMode.Practice) st.HasC4 = false;
                     Protocol.WriteRemote(_w, o.Id, st);
                 }
                 Protocol.WriteHeader(_w, header);
                 var bomb = Bomb;
-                if (bomb.State == BombState.Carried && GetPlayer(bomb.CarrierId)?.State.Team != p.State.Team) { bomb.CarrierId = 0; bomb.Position = Vector3.Zero; }
+                if (bomb.State == BombState.Carried && p.State.Team != Team.None && GetPlayer(bomb.CarrierId)?.State.Team != p.State.Team) { bomb.CarrierId = 0; bomb.Position = Vector3.Zero; }
                 Protocol.WriteBomb(_w, bomb);
                 WriteGrenadeSnapshot(_w);
                 WriteItemsSnapshot(_w);

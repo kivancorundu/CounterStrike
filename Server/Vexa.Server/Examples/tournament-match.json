@@ -16,5 +16,6 @@
   "overtime": true,
   "overtimeMoney": 12500,
   "fillBots": false,
-  "resultsPath": "results/ornek-final-1.json"
+  "resultsPath": "results/ornek-final-1.json",
+  "demoPath": "demos/ornek-final-1.vxdemo"
 }
