@@ -50,7 +50,7 @@ def boundary_pins(o, rings=1):
 
 
 def drape(o, colliders, pins=None, frames=36, stiffness=18.0, bending=0.8, mass=0.25, shrink=0.0,
-          thickness=0.0045, friction=6.0, quality=6):
+          thickness=0.0045, friction=6.0, quality=6, self_collision=False):
     """Simulates `o` falling onto `colliders` for `frames` frames and applies the result."""
     sc = bpy.context.scene
     sc.use_gravity = True
@@ -76,7 +76,11 @@ def drape(o, colliders, pins=None, frames=36, stiffness=18.0, bending=0.8, mass=
     cs.use_collision = True
     cs.collision_quality = 4
     cs.distance_min = thickness
-    cs.use_self_collision = False
+    cs.use_self_collision = self_collision
+    if self_collision:
+        # excess fabric folds over itself instead of collapsing into thin fins
+        cs.self_distance_min = 0.004
+        cs.self_friction = 5.0
     m.point_cache.frame_start = 1
     m.point_cache.frame_end = frames
     sc.frame_start = 1

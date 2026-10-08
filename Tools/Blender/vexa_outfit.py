@@ -208,7 +208,9 @@ def _keep_above(bm, keep, min_gap):
             _keep_above(bm, k, min_gap)
         return
     for v in bm.verts:
-        loc, nrm, _, dist = keep.find_nearest(v.co)
+        # only nearby surfaces matter: a layer that ends somewhere else (a shirt hem far above the knees) must not
+        # pull the fabric toward it
+        loc, nrm, _, dist = keep.find_nearest(v.co, 0.04)
         if loc is None:
             continue
         h = (v.co - loc).dot(nrm)
