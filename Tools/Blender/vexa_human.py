@@ -30,18 +30,20 @@ SKIN_TEX = os.path.join(HERE, "data", "mh_skin_young_male.png")
 HEIGHT = 1.80          # barefoot; boots add the rest (the hitboxes assume ~1.83 m)
 SOLE = 0.028           # body is lifted by the boot sole thickness
 
-# an athletic young man (the bulk comes from the clothes and the gear, not from the body)
+# a lean young man with a broad frame (average limbs: the bulk comes from the baggy clothes and the gear, not from the body)
 DEFAULT_SHAPE = {
     "macrodetails/caucasian-male-young": 1.0,
     "macrodetails/universal-male-young-averagemuscle-averageweight": 0.5,
-    "macrodetails/universal-male-young-maxmuscle-averageweight": 0.5,
-    "macrodetails/proportions/male-young-averagemuscle-averageweight-idealproportions": 0.5,
-    "macrodetails/proportions/male-young-maxmuscle-averageweight-idealproportions": 0.5,
+    "macrodetails/universal-male-young-maxmuscle-averageweight": 0.15,
+    "macrodetails/universal-male-young-averagemuscle-minweight": 0.2,
+    "macrodetails/universal-male-young-maxmuscle-minweight": 0.15,
+    "macrodetails/proportions/male-young-averagemuscle-averageweight-idealproportions": 0.7,
+    "macrodetails/proportions/male-young-maxmuscle-averageweight-idealproportions": 0.3,
     "macrodetails/height/male-young-maxmuscle-averageweight-maxheight": 0.25,
-    "measure/measure-shoulder-increase": 0.3, "measure/measure-neckcirc-increase": 0.35,
+    "measure/measure-shoulder-increase": 0.15, "measure/measure-neckcirc-increase": 0.3, "measure/measure-upperarm-increase": -0.3,
     "head/head-square": 0.35, "chin/chin-width-max": 0.3, "chin/chin-prominent-more": 0.2,
     "neck/neck-scale-horiz-more": 0.3, "neck/neck-scale-depth-more": 0.2,
-    "torso/torso-muscle-pectoral-incr": 0.2, "torso/torso-muscle-dorsi-incr": 0.3,
+    "torso/torso-muscle-pectoral-incr": 0.1, "torso/torso-muscle-dorsi-incr": 0.1,
     "stomach/stomach-pregnant-decr": 0.3,
 }
 

@@ -19,6 +19,7 @@ import vexa_human as H
 from vexa_common import custom_mat, mat
 
 BONE = {n: i for i, n in enumerate(H.GAME_BONES)}
+ARM_BONES = ("RightUpperArm", "RightLowerArm", "RightHand", "LeftUpperArm", "LeftLowerArm", "LeftHand")
 
 # fabric subdivision of the high-poly garments (2 = ~4 mm edges on the torso)
 SUB = {"level": 2}
@@ -393,6 +394,34 @@ def tube_path(name, pts, r, material, closed=False):
     return o
 
 
+def ribbon(name, pts, nrms, width, thick, material):
+    """Flat webbing strap along a path: pts lie `thick` above a surface whose normals are nrms; the strap grows
+    toward the surface, with softly rounded edges."""
+    bm = bmesh.new()
+    rows = []
+    n = len(pts)
+    for i in range(n):
+        t = (pts[min(i + 1, n - 1)] - pts[max(i - 1, 0)]).normalized()
+        side = t.cross(nrms[i]).normalized()
+        rows.append((bm.verts.new(pts[i] - side * width / 2), bm.verts.new(pts[i] + side * width / 2)))
+    for a, b in zip(rows, rows[1:]):
+        bm.faces.new((a[0], a[1], b[1], b[0]))
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    o = _link(name, me)
+    me.materials.append(material)
+    so = o.modifiers.new("Solid", "SOLIDIFY")
+    so.thickness = thick
+    so.use_rim = True
+    bv = o.modifiers.new("Bevel", "BEVEL")
+    bv.width = thick * 0.35
+    bv.segments = 2
+    bv.limit_method = "ANGLE"
+    _apply(o)
+    return o
+
+
 def hit(bvh, origin, direction):
     loc, nrm, _, _ = bvh.ray_cast(Vector(origin), Vector(direction).normalized(), 2.0)
     return loc, nrm
@@ -415,6 +444,9 @@ class Outfit:
         self.bone = _attr(me, "bone")
         self.co = np.array([v.co[:] for v in me.vertices])
         self.skin = _bvh(body)
+        # the skin without the arms: in the aiming pose the forearms pass right in front of the chest gear, so which
+        # side of a gear face looks at the body is judged against the torso, legs and head (vexa_uv.mark_inner)
+        self.skin_core = self._skin_without(ARM_BONES)
         CLEARANCE["bvh"] = self.skin
         # chest frame (posed): up along the chest, right toward the character's right shoulder
         up = (self.T["Chest"] - self.P["Chest"]).normalized()
@@ -422,6 +454,17 @@ class Outfit:
         r = (r - up * r.dot(up)).normalized()
         self.cu, self.cr = up, r
         self.cf = up.cross(r).normalized()
+
+    def _skin_without(self, bone_names):
+        limb = np.isin(self.bone, [BONE[b] for b in bone_names])
+        bm = bmesh.new()
+        bm.from_mesh(self.body.data)
+        bm.verts.ensure_lookup_table()
+        bmesh.ops.delete(bm, geom=[f for f in bm.faces if all(limb[v.index] for v in f.verts)], context="FACES")
+        bm.transform(self.body.matrix_world)
+        t = BVHTree.FromBMesh(bm)
+        bm.free()
+        return t
 
     # -- masks on the body (rest space) --
     def _edges(self):
@@ -587,31 +630,41 @@ class Outfit:
             near_wrist = self.along(R["wrist_" + s], R["elbow_" + s]) < sleeve_end
             arm = self.bones("RightLowerArm" if s == "r" else "LeftLowerArm")
             m &= ~(arm & near_wrist)
+        shoulder_x = abs(R["shoulder_r"][0])
+        top = R["neck"][2]
         def off(co, r):
             k = offset * loose
-            # looser at the belly and the sleeves, tighter over the shoulders
+            # a shirt hangs from the shoulders: almost no ease on top of them, the slack goes to the chest and belly
             if r.z < R["waist"][2] + 0.05:
                 k += 0.006 * loose
-            elif r.z > R["chest"][2]:
-                k += 0.003 * loose
-            return k
+            s = min(1.0, max(0.0, (r.z - R["chest"][2] - 0.02) / max(0.03, top - R["chest"][2] - 0.02)))
+            k *= 1.0 - 0.6 * s
+            # sleeves: ~45% of the body's ease (a real sleeve has ~10 cm over the biceps, not 20)
+            t = min(1.0, max(0.0, (abs(r.x) - shoulder_x + 0.01) / 0.06))
+            return k * (1.0 - 0.55 * t)
         fold = lambda co, n, r: self.arm_folds(co, n, r, 0.8 * loose) + self.torso_folds(co, n, r, 0.8 * loose) + fabric_noise(co, 0.0006 * loose, 6.0)
         if drape is not None:
             # the solver makes the drape folds; only light compression folds at the joints are added on top
             fold = lambda co, n, r: 0.45 * (self.arm_folds(co, n, r, loose) + self.torso_folds(co, n, r, loose)) + fabric_noise(co, 0.0003 * loose, 6.0)
-        sh = self.garment("Shirt", m, material, off, relax=int(8 + 22 * (loose - 1.0) / 0.35) if drape is None else 4, folds=fold, thick=0.003,
-                          over=over, drape=drape)
         if rolled:
+            # rolled-up sleeves: two rolls of fabric above the sleeve end, raised out of the shirt surface itself (a
+            # separate cuff band baked badly: its sharp creases sent the bake rays into the neighboring roll)
+            ends = []
             for s_ in "rl":
                 wr, el = np.asarray(R["wrist_" + s_]), np.asarray(R["elbow_" + s_])
-                u = (el - wr) / np.linalg.norm(el - wr)
-                bone = "RightLowerArm" if s_ == "r" else "LeftLowerArm"
-                def cuff(co, rr, wr=wr, u=u):
-                    t = float((np.asarray(rr[:]) - wr) @ u)
-                    return sleeve_end - 0.004 < t < sleeve_end + 0.055
-                self.band_rest(("RightCuff" if s_ == "r" else "LeftCuff"), material, sh, cuff, 0.004, 0.008, relax=4,
-                               bones=(bone, "RightUpperArm" if s_ == "r" else "LeftUpperArm"))
-        return sh
+                ends.append((wr, (el - wr) / np.linalg.norm(el - wr)))
+            def roll(r):
+                rr = np.asarray(r[:])
+                for wr, u in ends:
+                    t = float((rr - wr) @ u)
+                    x = (t - sleeve_end) / 0.055
+                    if 0.0 < x < 1.0 and np.linalg.norm((rr - wr) - u * t) < 0.09:
+                        return 0.007 * math.sin(math.pi * x) ** 0.6 * (0.75 + 0.25 * math.cos(4 * math.pi * x - math.pi))
+                return 0.0
+            base_fold = fold
+            fold = lambda co, n, r: base_fold(co, n, r) + roll(r)
+        return self.garment("Shirt", m, material, off, relax=int(8 + 22 * (loose - 1.0) / 0.35) if drape is None else 4, folds=fold,
+                            thick=0.003, over=over, drape=drape)
 
     def pants(self, material, offset=0.009, boot_top=0.25, over=(), drape=None):
         R = self.R
@@ -622,7 +675,7 @@ class Outfit:
         def off(co, r):
             k = offset
             if r.z < R["knee_r"][2] + 0.1:
-                k += 0.01  # bloused above the boots
+                k += 0.007  # bloused above the boots
             return k
         fold = lambda co, n, r: self.leg_folds(co, n, r, 0.85, boot_top=boot_top) + fabric_noise(co, 0.0007, 6.0, seed=2)
         if drape is not None:
@@ -1291,20 +1344,6 @@ class Outfit:
         thicken(o, thickness, offset=1.0)
         return self.add(o)
 
-    def band_rest(self, name, material, surface_obj, pred, gap, thickness, relax=3, bones=None):
-        """Like band(), with a predicate on (posed co, rest co)."""
-        src = surface_obj
-        rest = _attr(src.data, "rest")
-        m = np.array([pred(v.co, Vector(rest[v.index])) for v in src.data.vertices])
-        if bones is not None and "bone" in src.data.attributes:
-            m &= np.isin(_attr(src.data, "bone"), [BONE[b] for b in bones])
-        o = extract(src, m, name, material)
-        inflate(o, lambda co, r: gap, relax=relax + 4, keep=_bvh(src), min_gap=gap * 0.9)
-        displace(o, lambda co, n, r: 0.002 * math.sin(co.length * 900) + fabric_noise(co, 0.001, 30))
-        thicken(o, thickness, offset=1.0)
-        subdivide(o, 1)
-        return self.add(o)
-
     def shoulder_pads(self, shirt, material, strap):
         surf_obj = shirt
         for side, sgn in (("Right", 1), ("Left", -1)):
@@ -1395,6 +1434,25 @@ class Outfit:
             self.add(obox(name + "Tab", center + nrm * (t + 0.0005) + up * (h * 0.12), nrm, up, (w * 0.18, 0.003, h * 0.42), flap_mat, 0.3, 1))
         return p
 
+    def strap_over(self, name, surface, u, v, material, width, thick, gap, samples=20):
+        """Strap over the shoulder at chest-frame offset u: follows the surface (BVH) contour in the chest's
+        forward/up plane from the front (height v) over the top to the back, smoothed like stiff webbing."""
+        c = self.P["Chest"] + self.cr * u + self.cu * v
+        pts, nrms = [], []
+        for k in range(samples + 1):
+            a = -0.12 + (math.pi + 0.24) * k / samples
+            d = self.cf * math.cos(a) + self.cu * math.sin(a)
+            loc, nrm = hit(surface, c + d * 0.4, -d)
+            if loc is None:
+                continue
+            if nrm.dot(d) < 0:
+                nrm = -nrm
+            pts.append(loc + nrm * (gap + thick))
+            nrms.append(nrm)
+        for _ in range(3):
+            pts = [pts[0]] + [(pts[i - 1] + pts[i] * 2 + pts[i + 1]) / 4 for i in range(1, len(pts) - 1)] + [pts[-1]]
+        return ribbon(name, pts, nrms, width, thick, material)
+
     def plate_carrier(self, shirt, gear, strap, accent, polymer, style="ct"):
         """style "ct": full loadout (mag pouches, admin pouch, radio + antenna, dump pouch, MOLLE);
         "t": slick carrier with two small pouches and loose strap ends."""
@@ -1408,11 +1466,9 @@ class Outfit:
             v = d.dot(cu)
             return -0.19 < v < -0.06 and abs(d.dot(cr)) > 0.1
         cb = self.band("Cummerbund", gear, shirt, cumm, 0.006, 0.012, bones=("Hips", "Spine", "Chest"), smooth_base=True)
-        # shoulder straps over the trapezius
-        def straps(co):
-            d = co - c0
-            return 0.07 < abs(d.dot(cr)) < 0.125 and 0.06 < d.dot(cu) < 0.21
-        self.band("ShoulderStraps", gear, shirt, straps, 0.005, 0.008, bones=("Spine", "Chest", "Neck"), smooth_base=True)
+        # shoulder straps: webbing over the trapezius from the top of the front plate to the top of the back plate
+        for u in (0.09, -0.09):
+            self.add(self.strap_over("ShoulderStrap" + ("R" if u > 0 else "L"), surf, u, 0.11, gear, 0.045, 0.006, 0.004))
         fs = _bvh(front)
         if style == "t":
             for k, u in enumerate((-0.055, 0.055)):

@@ -65,12 +65,26 @@ def separate_inner(o):
     me.uv_layers[ATLAS].data.foreach_set("uv", uv.ravel())
 
 
-def mark_inner(o, skin_bvh):
-    """Face attribute "inner" = 1 where the face looks toward the body (hidden side of a layer)."""
+def mark_inner(o, skin_bvh, limb_bvh=None, limb_bones=(), on_limb=False):
+    """Face attribute "inner" = 1 where the face looks toward the body (hidden side of a layer).
+    skin_bvh: the skin without the arms. Faces worn on the arms (sleeves, gloves: most of their vertices follow
+    `limb_bones`, or the whole part when on_limb) are judged against limb_bvh, the whole skin. Judging gear
+    against the whole skin would hide the front of a vest wherever a forearm passes in front of it."""
     me = o.data
+    limb = np.zeros(len(me.polygons), dtype=bool)
+    if limb_bvh is not None:
+        if on_limb:
+            limb[:] = True
+        elif limb_bones and me.attributes.get("bone") is not None:
+            bone = np.zeros(len(me.vertices), dtype=np.int32)
+            me.attributes["bone"].data.foreach_get("value", bone)
+            on = np.isin(bone, limb_bones)
+            for p in me.polygons:
+                vs = p.vertices
+                limb[p.index] = 2 * sum(1 for v in vs if on[v]) > len(vs)
     vals = np.zeros(len(me.polygons), dtype=np.int32)
     for p in me.polygons:
-        loc, nrm, _, dist = skin_bvh.find_nearest(p.center)
+        loc, nrm, _, dist = (limb_bvh if limb[p.index] else skin_bvh).find_nearest(p.center)
         if loc is None:
             continue
         out = p.center - loc

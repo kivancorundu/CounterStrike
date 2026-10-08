@@ -232,9 +232,6 @@ def drop_inner(o):
     bm.to_mesh(o.data)
     bm.free()
     return o
-    for p in o.data.polygons:
-        p.use_smooth = True
-    return o
 
 
 def fix_layers(low, gap=0.0025):
@@ -251,6 +248,7 @@ def fix_layers(low, gap=0.0025):
     bm.from_mesh(low.data)
     bm.verts.ensure_lookup_table()
     bm.faces.ensure_lookup_table()
+    bm.normal_update()
     face_layer = np.array([min(layer[v.index] for v in f.verts) for f in bm.faces])
     verts = [v.co.copy() for v in bm.verts]
     order = sorted(set(layer.tolist()))
@@ -267,7 +265,9 @@ def fix_layers(low, gap=0.0025):
             if loc is None:
                 continue
             h = (v.co - loc).dot(nrm)
-            if h < gap and h > -0.02:
+            # only where the two surfaces face the same way (not the rims and edges of thin parts, which would be
+            # thrown sideways), and by a few millimeters at most
+            if -0.008 < h < gap and v.normal.dot(nrm) > 0.3:
                 v.co = v.co + nrm * (gap - h)
         verts = [v.co.copy() for v in bm.verts]
     bm.to_mesh(low.data)

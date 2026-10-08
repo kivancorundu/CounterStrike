@@ -35,6 +35,8 @@ DRAPE = dict(frames=40, stiffness=18.0, bending=0.6, mass=0.25, rings=2)
 # trousers: heavier twill, folds over itself
 DRAPE_PANTS = dict(frames=40, stiffness=22.0, bending=4.0, mass=0.3, rings=2, self_collision=True)
 
+# gear worn on the arms (no "bone" attribute: judged against the whole skin, see vexa_uv.mark_inner)
+ARM_GEAR = ("RightKnuckle", "LeftKnuckle", "RightWrist", "LeftWrist")
 # small round parts that read badly when decimated: the game meshes keep them at full resolution
 DETAIL_PARTS = ("MaskLens", "LensRim", "Voice", "Grill", "Filter", "Buckle", "QuickRelease", "Antenna")
 
@@ -94,7 +96,7 @@ def build(faction, shape=None):
     o = O.Outfit(body, posed, rest_lm, m)
     if faction == "muhafiz":
         shirt = o.shirt(m["jacket"], offset=0.03, loose=1.0, drape=DRAPE, hem=rest_lm["waist"][2] - 0.035)
-        pants = o.pants(m["pants"], offset=0.03, over=(shirt,), drape=DRAPE_PANTS)
+        pants = o.pants(m["pants"], offset=0.027, over=(shirt,), drape=DRAPE_PANTS)
         belt = o.belt(m["belt"], m["metal"], over=(shirt, pants))
         o.boots(m["boots"], m["sole"])
         gl = o.gloves(m["gloves"])
@@ -108,7 +110,7 @@ def build(faction, shape=None):
     else:
         shirt = o.shirt(m["jacket"], offset=0.032, loose=1.0, rolled=True, sleeve_end=0.16, collar=False, drape=DRAPE,
                         hem=rest_lm["waist"][2] - 0.035)
-        pants = o.pants(m["pants"], offset=0.032, over=(shirt,), drape=DRAPE_PANTS)
+        pants = o.pants(m["pants"], offset=0.029, over=(shirt,), drape=DRAPE_PANTS)
         belt = o.belt(m["belt"], m["metal"], over=(shirt, pants))
         o.belt_holster(belt, m["holster"])
         o.boots(m["boots"], m["sole"])
@@ -126,8 +128,10 @@ def build(faction, shape=None):
     parts = [visible] + o.parts
     # texture atlas on the parts (see vexa_uv): body UVs for the body and garments, smart project for gear
     import vexa_uv as UV
+    limb_bones = [O.BONE[b] for b in O.ARM_BONES]
     for p in parts:
-        UV.mark_inner(p, o.skin) if p is not visible else None
+        if p is not visible:
+            UV.mark_inner(p, o.skin_core, o.skin, limb_bones, on_limb=p.name.startswith(ARM_GEAR))
         UV.part_atlas(p, use_mh=p.data.uv_layers.get("mh") is not None)
         UV.separate_inner(p)
     # small hard parts the decimation must not erase (lenses, rims, buckles...): a "detail" vertex group

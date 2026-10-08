@@ -228,7 +228,7 @@ def textured_character_sheet(model_dir, factions, path):
     _light((math.radians(-45), 0, math.radians(135)), 1.4)
     _light((math.radians(80), 0, math.radians(30)), 0.8)
     # floor: grounds the characters with their contact shadows
-    bpy.ops.mesh.primitive_plane_add(size=30, location=(0, 0, 0))
+    bpy.ops.mesh.primitive_plane_add(size=400, location=(0, 0, 0))
     floor = bpy.context.active_object
     fm = bpy.data.materials.new("Floor")
     fm.use_nodes = True

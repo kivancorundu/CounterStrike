@@ -57,8 +57,8 @@ Durum: ✅ bitti · 🔄 sürüyor · ⏳ sırada
     - AK tipi: arpacık kulesi, gaz bloğu, temizleme çubuğu, perçinler.
     - AR tipi: ileri itme düğmesi, kovan saptırıcı, kurma kolu.
   - Namlu ucu, destek eli ve kovan çıkışı için işaret noktaları var.
-- ✅ **Gerçekçi karakterler (v3):** MakeHuman'ın CC0 temel insan mesh'inden atletik askerler; iki taraf da özgün tasarım.
-  - Bol kıyafetler kumaş simülasyonuyla gövdeye dökülür: omuza ve kalçaya oturur, aşağı sarkar, doğal kırışır.
+- ✅ **Gerçekçi karakterler (v3):** MakeHuman'ın CC0 temel insan mesh'inden orta yapılı, geniş omuzlu askerler; iki taraf da özgün tasarım.
+  - Bol kıyafetler kumaş simülasyonuyla gövdeye dökülür: omuza ve kalçaya oturur, aşağı sarkar, doğal kırışır. Kollar ve bacaklar şişkin değil.
   - **Akıncı** (saldırı): örgü kar maskesi, kolları sıvanmış ekoseli gömlek, açık renk plaka yeleği, haki kargo pantolon, kemer ve tabanca kılıfı.
   - **Muhafız** (savunma): başlık ve tam yüz gaz maskesi (çift cam, yan filtre, kafa kayışları), lacivert üniforma.
     - Cepli plaka yeleği, telsiz ve anten, dizlik, bacak kılıfı, boşaltma çantası.

@@ -128,16 +128,18 @@ Arayüz `Client/UI` altında tamamen C# ile kurulur. UXML/USS dosyası, sahne ve
   - `Editor/VexaModelImport.cs` içe aktarma ayarlarını otomatik yapar: normal haritası, doğrusal maske, PC'de 4K (mobil platformlarda 1K), döngüye giren animasyonlar.
   - `ModelLibrary` bunları yükler. Model yoksa ilkel şekillere geri düşülür; oyun yine çalışır.
 - **Karakter hattı (v3)** (`vexa_human` → `vexa_outfit` → `vexa_factions` → `vexa_characters`):
-  1. MakeHuman'ın CC0 temel insan mesh'i morph hedefleriyle atletik bir askere şekillenir (hacmi kıyafet ve teçhizat verir).
+  1. MakeHuman'ın CC0 temel insan mesh'i morph hedefleriyle orta yapılı, geniş omuzlu bir askere şekillenir (kol ve bacaklar normal kalınlıkta; hacmi bol kıyafet ve teçhizat verir).
   2. Geçici bir iskeletle nişan pozuna getirilir: iki kemikli IK ile eller kabza ve el kundağında, parmaklar silahı kavrar.
   3. Kıyafetler gövdeden bir beden büyük kesilir ve Blender'ın kumaş çözücüsüyle (`vexa_cloth`) yerçekimiyle gövdeye dökülür.
      - Yaka, manşet ve bel kenarları sabitlenir; kumaş omuz ve kalçaya oturur, aşağı sarkar, kendi kırışıklarını oluşturur.
+     - Bolluk payı bölgeye göre değişir: omuzda neredeyse yok, kollarda gövdenin yarısı kadar, göğüs ve belde en fazla (şişme balon görüntüsü olmaz).
      - Üstüne eklem kırışıkları ve dikişler eklenir.
      - Katman sırası: gömlek < pantolon < kemer < yelek < cep.
      - Botlar ayak ve bileğin dışbükey kabuklarından yeniden örülür (parmak izi kalmaz).
   4. Teçhizat ışın atışıyla yüzeye oturtulur. Sonuç ~0,5 milyon üçgenlik yüksek poligonlu kaynaktır.
   5. Oyun mesh'i bundan seyreltilir (PC ~80 bin, mobil ~10 bin üçgen).
      - Görünmeyen iç kabuklar atılır; küçük sert parçalar (mercek, toka) seyreltilmez.
+       Bir yüzün gövdeye bakıp bakmadığı kolsuz gövdeye göre ölçülür (sadece kol parçaları için kollara): nişan pozunda önkollar yeleğin önünden geçer, yoksa yeleğin ön yüzü de gizli sayılırdı.
      - Katmanlar birbirine geçmesin diye düzeltilir.
      Ağırlıklar otomatik ağırlıklandırılmış gövdeden aktarılır, tüm dokular yüksek poligondan pişirilir.
   6. UV atlası seyreltmeden önce kurulur: gövde ve kıyafetler MakeHuman'ın vücut UV'sini kullanır, yüz ve eller daha fazla piksel alır.
