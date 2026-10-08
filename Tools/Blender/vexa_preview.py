@@ -108,3 +108,110 @@ def character_sheet(builders, path):
     _setup_render(path, 1400, 1100, 32)
     bpy.ops.render.render(write_still=True)
     print("preview written to", path)
+
+
+def _textured(obj, tex_base, normal=True):
+    """Material from baked textures (<tex_base>_albedo/_mask/_normal.png) for preview renders."""
+    m = bpy.data.materials.new(os.path.basename(tex_base))
+    m.use_nodes = True
+    nt = m.node_tree
+    bsdf = nt.nodes.get("Principled BSDF")
+    def img(suffix, non_color):
+        path = tex_base + suffix
+        if not os.path.exists(path):
+            return None
+        n = nt.nodes.new("ShaderNodeTexImage")
+        n.image = bpy.data.images.load(path)
+        if non_color:
+            n.image.colorspace_settings.name = "Non-Color"
+        return n
+    a = img("_albedo.png", False)
+    if a:
+        nt.links.new(a.outputs["Color"], bsdf.inputs["Base Color"])
+    k = img("_mask.png", True)
+    if k:
+        sep = nt.nodes.new("ShaderNodeSeparateColor")
+        nt.links.new(k.outputs["Color"], sep.inputs[0])
+        nt.links.new(sep.outputs[0], bsdf.inputs["Metallic"])
+        inv = nt.nodes.new("ShaderNodeMath")
+        inv.operation = "SUBTRACT"
+        inv.inputs[0].default_value = 1.0
+        nt.links.new(k.outputs["Alpha"], inv.inputs[1])
+        nt.links.new(inv.outputs[0], bsdf.inputs["Roughness"])
+    nrm = img("_normal.png", True) if normal else None
+    if nrm:
+        nm = nt.nodes.new("ShaderNodeNormalMap")
+        nt.links.new(nrm.outputs["Color"], nm.inputs["Color"])
+        nt.links.new(nm.outputs[0], bsdf.inputs["Normal"])
+    for o in [obj] + list(obj.children_recursive):
+        if o.type == "MESH":
+            o.data.materials.clear()
+            o.data.materials.append(m)
+
+
+def import_fbx(path):
+    before = set(bpy.data.objects)
+    bpy.ops.import_scene.fbx(filepath=path)
+    new = [o for o in bpy.data.objects if o not in before]
+    roots = [o for o in new if o.parent is None]
+    return roots, new
+
+
+def textured_weapon_sheet(model_dir, ids, path, cols=5, persp=True):
+    """Three-quarter renders of the exported, textured weapons."""
+    reset_scene()
+    cell_w, cell_h = 1.5, 0.7
+    rows = (len(ids) + cols - 1) // cols
+    for i, wid in enumerate(ids):
+        r, c = divmod(i, cols)
+        roots, new = import_fbx(os.path.join(model_dir, wid + ".fbx"))
+        mesh = next(o for o in new if o.type == "MESH")
+        _textured(mesh, os.path.join(model_dir, "Textures", wid))
+        root = roots[0]
+        bb = [mesh.matrix_world @ Vector(v) for v in mesh.bound_box]
+        size = max(max(v.y for v in bb) - min(v.y for v in bb), max(v.x for v in bb) - min(v.x for v in bb), 0.25)
+        k = 1.15 / size
+        root.scale = tuple(s * k for s in root.scale)
+        bpy.context.view_layer.update()
+        bb = [mesh.matrix_world @ Vector(v) for v in mesh.bound_box]
+        cx = sum(v.x for v in bb) / 8; cy = sum(v.y for v in bb) / 8; cz = sum(v.z for v in bb) / 8
+        root.location = (root.location.x - cx, root.location.y - cy - c * cell_w, root.location.z - cz - r * cell_h)
+        _label(wid, (-0.3, -c * cell_w + 0.55, -r * cell_h - 0.3), 0.06, (math.radians(90), 0, math.radians(-90)))
+    cam = bpy.data.cameras.new("Cam")
+    cam.type = "ORTHO"
+    cam.ortho_scale = max(cols * cell_w, rows * cell_h * 1.6) + 0.2
+    co = bpy.data.objects.new("Cam", cam)
+    # slightly from above and in front: shows the side and top of each weapon
+    co.location = (-10, -(cols - 1) * cell_w / 2 - 1.2, -(rows - 1) * cell_h / 2 + 2.4)
+    co.rotation_euler = (math.radians(77), 0, math.radians(-97))
+    bpy.context.collection.objects.link(co)
+    bpy.context.scene.camera = co
+    _light((math.radians(45), math.radians(15), math.radians(-60)), 4.0)
+    _light((math.radians(-50), 0, math.radians(130)), 1.5)
+    w = 2400
+    _setup_render(path, w, int(w * rows * cell_h * 1.6 / (cols * cell_w)) + 80, 48)
+    bpy.ops.render.render(write_still=True)
+    print("preview written to", path)
+
+
+def textured_character_sheet(model_dir, factions, path):
+    reset_scene()
+    for i, f in enumerate(factions):
+        roots, new = import_fbx(os.path.join(model_dir, f + ".fbx"))
+        mesh = next(o for o in new if o.type == "MESH")
+        _textured(mesh, os.path.join(model_dir, "Textures", f))
+        root = roots[0]
+        root.location = (0, -i * 1.3, 0)
+        root.rotation_euler = (root.rotation_euler.x, root.rotation_euler.y, math.radians(-30))
+    cam = bpy.data.cameras.new("Cam")
+    cam.lens = 60
+    co = bpy.data.objects.new("Cam", cam)
+    co.location = (-6.4, -(len(factions) - 1) * 0.65 - 0.8, 1.35)
+    co.rotation_euler = (math.radians(86), 0, math.radians(-97))
+    bpy.context.collection.objects.link(co)
+    bpy.context.scene.camera = co
+    _light((math.radians(45), math.radians(15), math.radians(-60)), 4.0)
+    _light((math.radians(-50), 0, math.radians(130)), 1.5)
+    _setup_render(path, 1600, 1200, 64)
+    bpy.ops.render.render(write_still=True)
+    print("preview written to", path)

@@ -14,14 +14,15 @@ import bmesh
 from mathutils import Vector, Matrix, Euler
 
 # Level of detail: "pc" (smooth, more bevels) or "mobile" (low poly, but still beveled so it isn't blocky)
-DETAIL = {"segments": 2, "bevel": 0.0025, "cyl": 20, "small_parts": True}
+DETAIL = {"segments": 3, "bevel": 0.002, "cyl": 36, "small_parts": True, "fine": True}
 
 
 def set_detail(level):
+    # mobile: mid poly (CS 1.6-like density with rounded edges); pc: CS2-style density with fine details
     if level == "mobile":
-        DETAIL.update(segments=1, bevel=0.002, cyl=10, small_parts=False)
+        DETAIL.update(segments=2, bevel=0.0025, cyl=18, small_parts=True, fine=False)
     else:
-        DETAIL.update(segments=2, bevel=0.0025, cyl=20, small_parts=True)
+        DETAIL.update(segments=3, bevel=0.002, cyl=36, small_parts=True, fine=True)
 
 
 def reset_scene():

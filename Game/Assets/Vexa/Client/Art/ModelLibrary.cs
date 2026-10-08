@@ -12,6 +12,55 @@ namespace Vexa.Client.Art
     {
         static readonly Dictionary<string, GameObject> _prefabs = new Dictionary<string, GameObject>();
         static readonly Dictionary<string, AnimationClip[]> _clips = new Dictionary<string, AnimationClip[]>();
+        static readonly Dictionary<string, Material> _materials = new Dictionary<string, Material>();
+
+        /// <summary>
+        /// PBR material from the baked textures "<path>_albedo / _mask / _normal" (Tools/Blender/vexa_textures.py).
+        /// Mask layout: R = metallic, A = smoothness. Returns null if the textures aren't there.
+        /// </summary>
+        public static Material MaterialFor(string texturePath)
+        {
+            if (_materials.TryGetValue(texturePath, out var m)) return m;
+            var albedo = Resources.Load<Texture2D>(texturePath + "_albedo");
+            if (albedo == null) { _materials[texturePath] = null; return null; }
+            var mask = Resources.Load<Texture2D>(texturePath + "_mask");
+            var normal = PlatformProfile.IsMobile ? null : Resources.Load<Texture2D>(texturePath + "_normal");
+            var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            m = new Material(shader) { name = texturePath };
+            m.SetTexture("_BaseMap", albedo);
+            m.SetTexture("_MainTex", albedo);
+            m.SetColor("_BaseColor", Color.white);
+            m.color = Color.white;
+            if (mask != null)
+            {
+                m.SetTexture("_MetallicGlossMap", mask);
+                m.SetFloat("_Metallic", 1f);
+                m.SetFloat("_Smoothness", 1f);
+                m.SetFloat("_GlossMapScale", 1f);
+                m.EnableKeyword("_METALLICSPECGLOSSMAP"); // URP Lit
+                m.EnableKeyword("_METALLICGLOSSMAP");     // built-in Standard
+            }
+            if (normal != null)
+            {
+                m.SetTexture("_BumpMap", normal);
+                m.SetFloat("_BumpScale", 1f);
+                m.EnableKeyword("_NORMALMAP");
+            }
+            _materials[texturePath] = m;
+            return m;
+        }
+
+        static void Texture(GameObject go, string texturePath)
+        {
+            var m = MaterialFor(texturePath);
+            if (m == null) return;
+            foreach (var r in go.GetComponentsInChildren<Renderer>())
+            {
+                var mats = r.sharedMaterials;
+                for (int i = 0; i < mats.Length; i++) mats[i] = m;
+                r.sharedMaterials = mats;
+            }
+        }
 
         static string Folder(string kind, bool lod) => lod && PlatformProfile.IsMobile ? $"Models/{kind}/Mobile/" : $"Models/{kind}/";
 
@@ -51,14 +100,35 @@ namespace Vexa.Client.Art
         }
 
         /// <summary>Weapon / grenade / c4 / kit model by key (see Tools/Blender/vexa_weapons.py).</summary>
-        public static GameObject Weapon(string key) => string.IsNullOrEmpty(key) ? null : Spawn(Folder("Weapons", true) + key);
+        public static GameObject Weapon(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return null;
+            var go = Spawn(Folder("Weapons", true) + key);
+            if (go != null) Texture(go, Folder("Weapons", true) + "Textures/" + key);
+            return go;
+        }
 
         public static string Faction(Team t) => t == Team.CT ? "muhafiz" : "akinci";
 
-        public static GameObject Character(Team t) => Spawn(Folder("Characters", true) + Faction(t));
+        public static GameObject Character(Team t)
+        {
+            var go = Spawn(Folder("Characters", true) + Faction(t));
+            if (go != null) Texture(go, Folder("Characters", true) + "Textures/" + Faction(t));
+            return go;
+        }
 
         /// <summary>First-person forearms: children "RightArm" and "LeftArm" with the palm at each origin.</summary>
-        public static GameObject Arms(Team t) => Spawn("Models/Arms/" + Faction(t));
+        public static GameObject Arms(Team t)
+        {
+            var go = Spawn("Models/Arms/" + Faction(t));
+            if (go == null) return null;
+            foreach (var side in new[] { "RightArm", "LeftArm" })
+            {
+                var part = FindDeep(go.transform, side);
+                if (part != null) Texture(part.gameObject, $"Models/Arms/Textures/{Faction(t)}_{side}");
+            }
+            return go;
+        }
 
         /// <summary>Animation clips of a character, by short name (idle, walk, run, crouch, crouch_walk, jump, death).</summary>
         public static AnimationClip Clip(Team t, string name)

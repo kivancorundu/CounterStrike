@@ -251,11 +251,10 @@ def make_clips(arm):
 # ---------------------------------------------------------------- assembly
 
 def build_character(faction):
+    """v2: continuous skinned body (vexa_body) with automatic weights and layered gear."""
+    import vexa_body
     armature = build_armature(faction)
-    body = build_body(faction)
-    body.parent = armature
-    mod = body.modifiers.new("Armature", "ARMATURE")
-    mod.object = armature
+    body = vexa_body.build_body_v2(faction, FACTIONS[faction], armature)
     return armature, body
 
 
@@ -274,24 +273,44 @@ def export_character(path, armature, body):
 
 
 def build_arms(faction):
-    """First-person forearms. Each object's origin is the palm; the forearm runs back toward the camera."""
+    """First-person forearms (skinned-style smooth mesh). Each object's origin is the palm; the forearm runs back toward the camera."""
+    import vexa_body
+    from vexa_body import soft_box, ring, LEVEL
     f = FACTIONS[faction]
-    p = faction.capitalize()
-    top = custom_mat(f"{p}_top", f["top"], 0, 0.8)
-    gloves = custom_mat(f"{p}_gloves", f["gloves"], 0, 0.8)
-    accent = custom_mat(f"{p}_accent", f["accent"], 0, 0.5)
+    m = vexa_body.faction_materials(faction, f)
     objs = []
     for side, s in (("RightArm", -1), ("LeftArm", 1)):
-        parts = []
-        # forearm sleeve runs back (+Y), outward and down from the hand
-        a, b = (0.0, 0.03, -0.01), (0.07 * s * -1 if side == "RightArm" else 0.05, 0.36, -0.12)
-        parts.append(cyl(side + "Sleeve", a, b, 0.042, top, r2=0.05))
-        parts.append(cyl(side + "Cuff", (0, 0.035, -0.012), (0, 0.06, -0.017), 0.046, accent))
-        g = box(side + "Glove", (0, -0.015, 0.0), (0.075, 0.1, 0.045), gloves, bevel_width=0.016)
-        g.modifiers["Bevel"].segments = 3
-        parts.append(g)
-        parts.append(box(side + "Thumb", (0.03 * -s, -0.04, 0.02), (0.022, 0.06, 0.022), gloves, bevel_width=0.008))
-        o = join(parts, side)
+        # chain: elbow (behind, toward the camera) -> forearm -> wrist -> palm -> fingers, plus a thumb branch
+        out = 0.06 * s * -1 if side == "RightArm" else 0.04
+        pts = {"elb": ((out, 0.36, -0.12), (0.052, 0.05)), "fore": ((out * 0.5, 0.18, -0.06), (0.047, 0.043)),
+               "wr": ((0, 0.04, -0.012), (0.034, 0.03)), "palm": ((0, -0.01, 0.0), (0.045, 0.025)),
+               "fing": ((0, -0.06, -0.012), (0.04, 0.02)), "thumb": ((0.03 * -s, -0.03, 0.022), (0.014, 0.014))}
+        names = list(pts)
+        edges = [("elb", "fore"), ("fore", "wr"), ("wr", "palm"), ("palm", "fing"), ("palm", "thumb")]
+        me = bpy.data.meshes.new(side)
+        me.from_pydata([pts[n][0] for n in names], [(names.index(a), names.index(b)) for a, b in edges], [])
+        o = bpy.data.objects.new(side, me)
+        bpy.context.collection.objects.link(o)
+        sk = o.modifiers.new("Skin", "SKIN")
+        sk.branch_smoothing = 0.7
+        for i, n in enumerate(names):
+            me.skin_vertices[0].data[i].radius = pts[n][1]
+        me.skin_vertices[0].data[0].use_root = True
+        ss = o.modifiers.new("Sub", "SUBSURF")
+        ss.levels = ss.render_levels = 2
+        vexa_body._apply_all(o)
+        o.data.materials.append(m["jacket"])
+        o.data.materials.append(m["gloves"])
+        for poly in o.data.polygons:
+            poly.material_index = 1 if poly.center.y < 0.035 else 0
+        cuff = ring(side + "Cuff", (0, 0.05, -0.015), 0.04, 0.012, m["accent"] if faction == "akinci" else m["gear"], rot=(math.radians(90), 0, 0))
+        knuckle = soft_box(side + "Knuckle", (0, -0.035, 0.02), (0.05, 0.03, 0.012), m["polymer"], 0.35, sub=1)
+        bpy.ops.object.select_all(action="DESELECT")
+        for x in (cuff, knuckle, o):
+            x.select_set(True)
+        bpy.context.view_layer.objects.active = o
+        bpy.ops.object.join()
+        bpy.ops.object.shade_smooth()
         objs.append(o)
     return objs
 
@@ -300,20 +319,32 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
     ap.add_argument("--preview", default="")
+    ap.add_argument("--textures", action="store_true", help="bake PBR textures")
     args = ap.parse_args([a for a in sys.argv[1:] if a != "--"])
+    import vexa_body
     for level, sub in (("pc", "Characters"), ("mobile", os.path.join("Characters", "Mobile"))):
         set_detail(level)
+        vexa_body.set_level(level)
         for faction in FACTIONS:
             reset_scene()
             arm, body = build_character(faction)
+            if args.textures:
+                import vexa_textures
+                vexa_textures.bake_model(body, os.path.join(args.out, sub, "Textures"), faction, 2048 if level == "pc" else 1024,
+                                         normal=level == "pc", scale_hint=1.6, samples=8)
             make_clips(arm)
             export_character(os.path.join(args.out, sub, faction + ".fbx"), arm, body)
             print(f"{level:7} {faction:8} {tri_count(body):6} tris, {len(bpy.data.actions)} clips")
     set_detail("pc")
+    vexa_body.set_level("pc")
     from vexa_common import export_fbx
     for faction in FACTIONS:
         reset_scene()
         objs = build_arms(faction)
+        if args.textures:
+            import vexa_textures
+            for o in objs:
+                vexa_textures.bake_model(o, os.path.join(args.out, "Arms", "Textures"), f"{faction}_{o.name}", 512, normal=True, scale_hint=1.0)
         export_fbx(os.path.join(args.out, "Arms", faction + ".fbx"), objs)
     if args.preview:
         import vexa_preview

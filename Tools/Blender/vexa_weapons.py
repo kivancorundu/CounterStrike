@@ -219,6 +219,45 @@ def bipod(parts, y, z):
         parts.append(cyl(f"Bipod{s}", (s * 0.012, y, z - 0.01), (s * 0.02, y - 0.18, z - 0.025), 0.005, "Metal"))
 
 
+def fine_rifle(parts, rf, rb, rh, rw, bore, mag_y, mag_kind):
+    """PC-only details that make close-up first-person views read as a real object."""
+    if not DETAIL["fine"]:
+        return
+    side = R * (rw / 2 + 0.0015)
+    zc = bore - rh * 0.12
+    # receiver pins and screws
+    for i, (yy, zz) in enumerate(((-rf * 0.6, zc - rh * 0.25), (rb * 0.3, zc - rh * 0.28), (rb * 0.75, zc + rh * 0.1), (-rf * 0.15, zc + rh * 0.2))):
+        parts.append(cyl(f"Pin{i}", (side, yy, zz), (side * 1.06, yy, zz), 0.0032, "Steel", verts=12))
+    # selector lever and magazine release
+    parts.append(box("Selector", (side * 1.02, rb * 0.15, zc - rh * 0.05), (0.004, 0.022, 0.007), "Steel", rot=(math.radians(-20), 0, 0)))
+    parts.append(box("MagRelease", (side * 1.02, mag_y + 0.03, zc - rh * 0.32), (0.004, 0.012, 0.01), "Steel"))
+    # grip texture: shallow ribs down both sides
+    for i in range(6):
+        z = -0.02 - i * 0.013
+        for s in (-1, 1):
+            parts.append(box(f"GripRib{i}{s}", (s * 0.0158, 0.006 + i * 0.0024, z), (0.0016, 0.034, 0.0045), "Grip", bevel=False))
+    # sling loops front and back
+    parts.append(torus("SlingRear", (0, rb + 0.01, zc - rh * 0.4), 0.008, 0.0016, "Steel", rot=(0, math.radians(90), 0)))
+    # magazine ribs
+    if mag_kind in ("straight", "curved"):
+        for i in range(3):
+            parts.append(box(f"MagRib{i}", (R * 0.0125, mag_y - 0.004 * i, zc - rh * 0.55 - 0.03 - i * 0.035), (0.0016, 0.05, 0.004), "Polymer", bevel=False))
+
+
+def fine_pistol(parts, slide, bore):
+    if not DETAIL["fine"]:
+        return
+    sl, sh, sw = slide
+    front = sl * 0.72
+    side = R * (sw / 2 + 0.001)
+    parts.append(cyl("TakedownPin", (side, -front * 0.35, bore - sh * 0.62), (side * 1.08, -front * 0.35, bore - sh * 0.62), 0.0028, "Steel", verts=12))
+    parts.append(box("SlideStop", (side * 1.03, -front * 0.15, bore - sh * 0.35), (0.003, 0.02, 0.005), "Steel"))
+    parts.append(box("MagButton", (side * 1.03, -0.005, -0.012), (0.003, 0.009, 0.009), "Steel"))
+    for i in range(7):
+        for s in (-1, 1):
+            parts.append(box(f"Stipple{i}{s}", (s * 0.0145, 0.02 + i * 0.002, -0.02 - i * 0.01), (0.0014, 0.03, 0.004), "Grip", bevel=False))
+
+
 # ============================================================ weapon definitions
 
 def rifle(p):
@@ -270,6 +309,7 @@ def rifle(p):
         parts.append(cyl("Pump", (0, y - 0.04, bore - 0.03), (0, y - 0.04 - p["pump"], bore - 0.03), 0.022, "Polymer"))
     if p.get("ejection", True) and DETAIL["small_parts"]:
         parts.append(box("Port", (R * rw / 2, -rf * 0.2, bore + 0.006), (0.004, 0.05, 0.016), "Polymer", bevel=False))
+    fine_rifle(parts, rf, rb, rh, rw, bore, mag_y, mag_kind)
     support_y = p.get("support_y", y - hg_len * 0.55 if hg_len > 0 else y - 0.05)
     return parts, (0, y_end, bore), (0, support_y, bore - 0.02), (R * rw / 2, -rf * 0.2, bore + 0.006)
 
@@ -331,6 +371,7 @@ def pistol(p):
         parts.append(box("Hammer", (0, sl - front + 0.004, bore - 0.004), (0.006, 0.01, 0.012), "Steel"))
     if p.get("mag_ext"):
         parts.append(box("MagExt", (0, 0.038, -0.1), (0.026, 0.035, 0.03), "Metal"))
+    fine_pistol(parts, (sl, sh, sw), bore)
     return parts, (0, y_end, bore + 0.002), (0, 0.02, -0.06), (R * sw / 2, -0.01, bore + 0.006)
 
 
@@ -548,16 +589,26 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--only", default="")
     ap.add_argument("--preview", default="")
+    ap.add_argument("--textures", action="store_true", help="bake PBR textures (slow: ~1 min per weapon on PC)")
+    ap.add_argument("--levels", default="pc,mobile")
     args = ap.parse_args([a for a in sys.argv[1:] if a != "--"])
     ids = [w for w in args.only.split(",") if w] or list(WEAPONS.keys())
     report = []
     for level, sub in (("pc", "Weapons"), ("mobile", os.path.join("Weapons", "Mobile"))):
+        if level not in args.levels.split(","):
+            continue
         set_detail(level)
         for wid in ids:
             reset_scene()
             o = build(wid)
+            if args.textures:
+                import vexa_textures
+                small = wid in ("he", "flash", "smoke", "molotov", "incendiary", "decoy", "kit", "knife", "taser")
+                size = (512 if small else 1024) if level == "pc" else (256 if small else 512)
+                vexa_textures.bake_model(o, os.path.join(args.out, sub, "Textures"), wid, size, normal=level == "pc", scale_hint=0.6 if small else 1.0)
             export_fbx(os.path.join(args.out, sub, wid + ".fbx"), [o])
             report.append((level, wid, tri_count(o)))
+            print(f"{level:7} {wid:12} {tri_count(o):6} tris", flush=True)
     for level, wid, tris in report:
         print(f"{level:7} {wid:12} {tris:6} tris")
     if args.preview:

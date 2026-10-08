@@ -121,7 +121,10 @@ Arayüz `Client/UI` altında tamamen C# ile kurulur. UXML/USS dosyası, sahne ve
 
 ## Görseller ve ses
 
-- **Modeller** `Tools/Blender` script'leriyle üretilip `Resources/Models` altına FBX olarak yazılır. Mobil sürüm düşük poligonlu ayrı dosyalardır.
+- **Modeller** `Tools/Blender` script'leriyle üretilip `Resources/Models` altına FBX olarak yazılır. Mobil sürüm orta poligonlu ayrı dosyalardır.
+  - Dokular modelle birlikte pişirilir: `Textures/<ad>_albedo.png`, `_mask.png` (R metal, A pürüzsüzlük), `_normal.png` (sadece PC).
+  - Oyun bunlardan çalışma anında URP Lit malzemesi kurar.
+  - `Editor/VexaModelImport.cs` içe aktarma ayarlarını otomatik yapar: normal haritası, doğrusal maske, döngüye giren animasyonlar.
   - `ModelLibrary` bunları yükler. Model yoksa ilkel şekillere geri düşülür; oyun yine çalışır.
 - **Karakter animasyonu** `PlayableGraph` ile yapılır (Animator Controller gerektirmez): klipler ağdan gelen hız, eğilme ve zemin durumuna göre karıştırılır.
   - Nişan için göğüs kemiği eğilir. Silah sağ el kemiğine yerleşir.

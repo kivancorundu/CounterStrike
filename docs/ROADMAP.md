@@ -35,10 +35,21 @@ Durum: ✅ bitti · 🔄 sürüyor · ⏳ sırada
 
 ## Faz 2 — Görseller: silahlar ve karakterler 🔄
 
-- ✅ **Özgün silah modelleri:** 33 silah, 6 el bombası, C4, imha kiti ve bıçak; PC ve mobil (düşük poligon) sürümleri.
+- ✅ **İki detay seviyesi:**
+  - **Mobil:** orta poligon (CS 1.6 yoğunluğu ama yuvarlatılmış köşeler).
+    - Karakter yaklaşık 6–8 bin, silah 1–4 bin üçgen.
+    - 512–1024 px renk ve metal/pürüzsüzlük dokusu.
+  - **PC:** CS2 tarzı.
+    - Karakter yaklaşık 28–35 bin, silah 3–12 bin üçgen.
+    - İnce detaylar (vida, pim, kabze dokusu, şarjör kanalları, seçici kol).
+    - 1024–2048 px PBR dokular: renk, metal/pürüzsüzlük, normal haritası.
+- ✅ **Dokular Blender'da otomatik pişiriliyor** (`Tools/Blender/vexa_textures.py`):
+  - metalde kenar aşınması ve çizikler, ahşapta damar, kumaşta dokuma ve kırışıklar
+  - polimerde pütürlü yüzey, girintilerde kir (ambient occlusion)
+- ✅ **Özgün silah modelleri:** 33 silah, 6 el bombası, C4, imha kiti ve bıçak.
   - Blender script'iyle parametrik olarak üretiliyor (`Tools/Blender/vexa_weapons.py`).
-  - Pahlı kenarlar sayesinde küp küp durmuyor. Namlu ucu, destek eli ve kovan çıkışı için işaret noktaları var.
-- ✅ **Özgün karakterler:** iki taraf.
+  - Namlu ucu, destek eli ve kovan çıkışı için işaret noktaları var.
+- ✅ **Özgün karakterler:** iki taraf. Gövde tek parça organik bir mesh (skin modifier + subdivision), iskelete otomatik ağırlıklandırılmış; kafa ayrı heykellenmiş (kafatası, çene, burun, kulaklar).
   - **Akıncı** (saldırı): kum rengi ceket, kep ve gözlük.
   - **Muhafız** (savunma): lacivert üniforma, vizörlü kask ve plaka yeleği.
   - İkisi de rig'li; 7 animasyonu var: bekleme, yürüme, koşma, eğilme, eğilerek yürüme, zıplama, ölüm.
@@ -50,10 +61,10 @@ Durum: ✅ bitti · 🔄 sürüyor · ⏳ sırada
 - ✅ **Ses (geçici, sentez):**
   - 3B konumsal silah ve ayak sesleri (zemine göre; yürüme ve eğilme sessiz).
   - Şarjör, bombalar, giderek hızlanan C4 bipi, isabet ve öldürme geri bildirimi, raund sesleri.
-- ⏳ Kaydedilmiş/tasarlanmış ses paketi; dokular (şu an düz renkli malzemeler); el animasyonları için kemikli kollar.
+- ⏳ Kaydedilmiş/tasarlanmış ses paketi; el animasyonları için kemikli kollar; bir 3D sanatçıdan yüz ve kumaş rötuşu.
 
-> Modeller tekrar üretilebilir: `pip install bpy` sonrası `python Tools/Blender/vexa_weapons.py --out Game/Assets/Vexa/Resources/Models`
-> ve `vexa_characters.py`. PC'de CS2 seviyesi için bu modeller bir 3D sanatçının rötuşu ve dokularıyla tamamlanmalı.
+> Modeller tekrar üretilebilir. Önce `pip install bpy`, sonra `python Tools/Blender/vexa_weapons.py --out Game/Assets/Vexa/Resources/Models --textures`
+> ve aynı şekilde `vexa_characters.py`. Dokularla birlikte tüm set yaklaşık 1 saat sürer. PC'de CS2 seviyesi için bu modeller bir 3D sanatçının rötuşu ve dokularıyla tamamlanmalı.
 
 ## Faz 3 — Gerçek arayüz 🔄
 
