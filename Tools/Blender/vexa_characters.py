@@ -161,21 +161,77 @@ def duplicate(o, name):
     return c
 
 
+def _split_faces(o, keep_fn, name):
+    """New object with the faces of o for which keep_fn(face, deform layer) is true (o keeps the others)."""
+    import bmesh
+    part = duplicate(o, name)
+    for obj, want in ((part, True), (o, False)):
+        bm = bmesh.new()
+        bm.from_mesh(obj.data)
+        dl = bm.verts.layers.deform.active
+        bmesh.ops.delete(bm, geom=[f for f in bm.faces if keep_fn(f, dl) != want], context="FACES")
+        bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+        bm.to_mesh(obj.data)
+        bm.free()
+    return part
+
+
 def decimate(o, tris):
-    """Collapse decimation to ~tris triangles; vertices in the "detail" group (small hard parts) are protected."""
+    """Collapse decimation to ~tris triangles. Small hard parts (the "detail" vertex group: lenses, rims, buckles)
+    are kept at full resolution and joined back afterwards."""
+    keep = None
+    g = o.vertex_groups.get("detail")
+    if g is not None:
+        gi = g.index
+        keep = _split_faces(o, lambda f, dl: dl is not None and all(gi in v[dl] for v in f.verts), o.name + "_detail")
+        if len(keep.data.polygons) == 0:
+            bpy.data.objects.remove(keep)
+            keep = None
+    if keep is not None and tri_count(keep) > tris * 0.15:
+        # small parts get at most 15% of the budget (mobile)
+        kt = tri_count(keep)
+        keep.modifiers.new("Tri", "TRIANGULATE")
+        dk = keep.modifiers.new("Decimate", "DECIMATE")
+        dk.ratio = tris * 0.15 / kt
+        dk.use_collapse_triangulate = True
+        _apply_mods(keep)
+    budget = tris - (tri_count(keep) if keep is not None else 0)
     cur = tri_count(o)
-    if cur > tris:
-        tri = o.modifiers.new("Tri", "TRIANGULATE")
+    if cur > budget > 0:
+        o.modifiers.new("Tri", "TRIANGULATE")
         d = o.modifiers.new("Decimate", "DECIMATE")
-        d.ratio = tris / cur
+        d.ratio = budget / cur
         d.use_collapse_triangulate = True
-        if o.vertex_groups.get("detail") is not None:
-            d.vertex_group = "detail"
-            d.invert_vertex_group = True
-            d.vertex_group_factor = 1.0
         _apply_mods(o)
+    if keep is not None:
+        _select([o, keep], o)
+        bpy.ops.object.join()
     if o.vertex_groups.get("detail") is not None:
         o.vertex_groups.remove(o.vertex_groups["detail"])
+    for p in o.data.polygons:
+        p.use_smooth = True
+    return o
+
+
+def drop_inner(o):
+    """Removes the inward-facing shells of garments and gear from a game mesh (see vexa_uv.mark_inner): they are
+    hidden in the high-poly source, but after decimation they poke through the thin outer layer and show up dark."""
+    import bmesh
+    a = o.data.attributes.get("inner")
+    if a is None:
+        return o
+    vals = np.zeros(len(o.data.polygons), dtype=np.int32)
+    a.data.foreach_get("value", vals)
+    if not vals.any():
+        return o
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    bm.faces.ensure_lookup_table()
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if vals[f.index] == 1], context="FACES")
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+    bm.to_mesh(o.data)
+    bm.free()
+    return o
     for p in o.data.polygons:
         p.use_smooth = True
     return o
@@ -345,7 +401,7 @@ def build_arms(faction, high, posed, out, textures):
         bm.to_mesh(src.data)
         bm.free()
         bend_forearm(src, posed[side + "Hand"][0], el, FP_FOREARM[side])
-        low = decimate(duplicate(src, name), ARM_TRIS)
+        low = decimate(drop_inner(duplicate(src, name)), ARM_TRIS)
         for vg in list(low.vertex_groups):
             low.vertex_groups.remove(vg)
         # the arm's islands (sleeve, glove, skin) refill their own texture
@@ -382,7 +438,7 @@ def build_character(faction, out, textures):
     report = {}
     lows = {}
     for level, cfg in LOD.items():
-        low = decimate(duplicate(high, faction + "_body"), cfg["tris"])
+        low = decimate(drop_inner(duplicate(high, faction + "_body")), cfg["tris"])
         fix_layers(low)
         skin_low(low, full, arm)
         if textures:
