@@ -2,7 +2,7 @@
 import math
 import os
 import bpy
-from mathutils import Vector
+from mathutils import Euler, Vector
 
 from vexa_common import reset_scene, set_detail
 
@@ -160,39 +160,50 @@ def import_fbx(path):
     return roots, new
 
 
-def textured_weapon_sheet(model_dir, ids, path, cols=5, persp=True):
-    """Three-quarter renders of the exported, textured weapons."""
+def textured_weapon_sheet(model_dir, ids, path, cols=5, width=2400):
+    """Three-quarter renders of the exported, textured weapons. The grid is laid out in the camera's view plane and
+    every weapon is scaled to fill its cell, so the sheet frames itself for any number of columns."""
     reset_scene()
-    cell_w, cell_h = 1.5, 0.7
+    rot = Euler((math.radians(77), 0, math.radians(-97)))  # from the right side, slightly above and in front
+    M = rot.to_matrix()
+    R, U, F = M.col[0], M.col[1], -M.col[2]
+    cell_w, cell_h = 1.6, 0.95
     rows = (len(ids) + cols - 1) // cols
     for i, wid in enumerate(ids):
         r, c = divmod(i, cols)
         roots, new = import_fbx(os.path.join(model_dir, wid + ".fbx"))
-        mesh = next(o for o in new if o.type == "MESH")
-        _textured(mesh, os.path.join(model_dir, "Textures", wid))
-        root = roots[0]
-        bb = [mesh.matrix_world @ Vector(v) for v in mesh.bound_box]
-        size = max(max(v.y for v in bb) - min(v.y for v in bb), max(v.x for v in bb) - min(v.x for v in bb), 0.25)
-        k = 1.15 / size
-        root.scale = tuple(s * k for s in root.scale)
+        meshes = [o for o in new if o.type == "MESH"]
+        for o in meshes:
+            _textured(o, os.path.join(model_dir, "Textures", wid))
         bpy.context.view_layer.update()
-        bb = [mesh.matrix_world @ Vector(v) for v in mesh.bound_box]
-        cx = sum(v.x for v in bb) / 8; cy = sum(v.y for v in bb) / 8; cz = sum(v.z for v in bb) / 8
-        root.location = (root.location.x - cx, root.location.y - cy - c * cell_w, root.location.z - cz - r * cell_h)
-        _label(wid, (-0.3, -c * cell_w + 0.55, -r * cell_h - 0.3), 0.06, (math.radians(90), 0, math.radians(-90)))
+        def extent():
+            pts = [o.matrix_world @ Vector(v) for o in meshes for v in o.bound_box]
+            er = max(p.dot(R) for p in pts) - min(p.dot(R) for p in pts)
+            eu = max(p.dot(U) for p in pts) - min(p.dot(U) for p in pts)
+            return pts, er, eu
+        pts, er, eu = extent()
+        k = min(cell_w * 0.84 / max(er, 1e-4), cell_h * 0.62 / max(eu, 1e-4))
+        for root in roots:
+            root.scale = tuple(x * k for x in root.scale)
+        bpy.context.view_layer.update()
+        pts, er, eu = extent()
+        center = sum(pts, Vector()) / len(pts)
+        target = R * (c * cell_w) - U * (r * cell_h - cell_h * 0.06)
+        for root in roots:
+            root.location = root.location + (target - center)
+        _label(wid, target - U * (cell_h * 0.44) - R * (cell_w * 0.42), 0.075, rot)
     cam = bpy.data.cameras.new("Cam")
     cam.type = "ORTHO"
-    cam.ortho_scale = max(cols * cell_w, rows * cell_h * 1.6) + 0.2
+    W, H = cols * cell_w, rows * cell_h
+    cam.ortho_scale = max(W, H)
     co = bpy.data.objects.new("Cam", cam)
-    # slightly from above and in front: shows the side and top of each weapon
-    co.location = (-10, -(cols - 1) * cell_w / 2 - 1.2, -(rows - 1) * cell_h / 2 + 2.4)
-    co.rotation_euler = (math.radians(77), 0, math.radians(-97))
+    co.rotation_euler = rot
+    co.location = R * ((cols - 1) * cell_w / 2) - U * ((rows - 1) * cell_h / 2) - F * 10
     bpy.context.collection.objects.link(co)
     bpy.context.scene.camera = co
     _light((math.radians(45), math.radians(15), math.radians(-60)), 4.0)
     _light((math.radians(-50), 0, math.radians(130)), 1.5)
-    w = 2400
-    _setup_render(path, w, int(w * rows * cell_h * 1.6 / (cols * cell_w)) + 80, 48)
+    _setup_render(path, width, int(width * H / W), 48)
     bpy.ops.render.render(write_still=True)
     print("preview written to", path)
 
@@ -216,6 +227,14 @@ def textured_character_sheet(model_dir, factions, path):
     _light((math.radians(48), math.radians(12), math.radians(-55)), 3.2)
     _light((math.radians(-45), 0, math.radians(135)), 1.4)
     _light((math.radians(80), 0, math.radians(30)), 0.8)
+    # floor: grounds the characters with their contact shadows
+    bpy.ops.mesh.primitive_plane_add(size=30, location=(0, 0, 0))
+    floor = bpy.context.active_object
+    fm = bpy.data.materials.new("Floor")
+    fm.use_nodes = True
+    fm.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.16, 0.16, 0.17, 1)
+    fm.node_tree.nodes["Principled BSDF"].inputs["Roughness"].default_value = 0.85
+    floor.data.materials.append(fm)
     cam = bpy.data.cameras.new("Cam")
     co = bpy.data.objects.new("Cam", cam)
     bpy.context.collection.objects.link(co)
