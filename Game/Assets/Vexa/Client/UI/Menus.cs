@@ -52,7 +52,8 @@ namespace Vexa.Client.UI
     public sealed class MainMenuView : VisualElement
     {
         private readonly TopBar _top;
-        private readonly VisualElement _home, _play, _settingsPage, _leftShade;
+        private readonly VisualElement _home, _play, _settingsPage, _leftShade, _demosPage;
+        private readonly DemosPage _demos = new DemosPage();
         private readonly PlayPage _playPage;
         private readonly Label _error;
         private readonly SettingsView _settingsView = new SettingsView();
@@ -70,9 +71,11 @@ namespace Vexa.Client.UI
             _play.Add(_playPage);
             _settingsPage = U.Box().Abs(0, 72, 0, 0).Bg(Theme.Ink).Pad(40, 64);
             _settingsPage.Add(_settingsView);
-            hierarchy.Add(_home); hierarchy.Add(_play); hierarchy.Add(_settingsPage);
+            _demosPage = U.Box().Abs(0, 72, 0, 0).Bg(Theme.Ink).Pad(40, 64);
+            _demosPage.Add(_demos);
+            hierarchy.Add(_home); hierarchy.Add(_play); hierarchy.Add(_demosPage); hierarchy.Add(_settingsPage);
 
-            _top = new TopBar(new[] { "ANA SAYFA", "OYNA", "AYARLAR" }, ShowPage);
+            _top = new TopBar(new[] { "ANA SAYFA", "OYNA", "DEMOLAR", "AYARLAR" }, ShowPage);
             hierarchy.Add(_top);
 
             var errWrap = U.Box().CenterX(null, 40);
@@ -89,8 +92,10 @@ namespace Vexa.Client.UI
             _top.Select(page);
             _home.Show(page == 0); _leftShade.Show(page == 0);
             _play.Show(page == 1);
-            if (page == 2 && !_settingsPage.Visible()) _settingsView.Refresh();
-            _settingsPage.Show(page == 2);
+            if (page == 2 && !_demosPage.Visible()) _demos.Refresh();
+            _demosPage.Show(page == 2);
+            if (page == 3 && !_settingsPage.Visible()) _settingsView.Refresh();
+            _settingsPage.Show(page == 3);
             if (page == 1) _playPage.Refresh();
         }
 
@@ -119,7 +124,8 @@ namespace Vexa.Client.UI
             var list = U.Col().Margin(18, 0, 0, 0);
             list.Add(new UButton("ANTRENMAN", ButtonStyle.MenuItem, () => { _playPage.PickMode(3); ShowPage(1); }).WithSub("BOTLARLA"));
             list.Add(new UButton("SUNUCUYA KATIL", ButtonStyle.MenuItem, () => ShowPage(1)).WithSub("IP / PORT"));
-            list.Add(new UButton("AYARLAR", ButtonStyle.MenuItem, () => ShowPage(2)).WithSub("NİŞANGAH · GÖRÜNTÜ"));
+            list.Add(new UButton("DEMOLAR", ButtonStyle.MenuItem, () => ShowPage(2)).WithSub("MAÇ KAYITLARI"));
+            list.Add(new UButton("AYARLAR", ButtonStyle.MenuItem, () => ShowPage(3)).WithSub("NİŞANGAH · TUŞLAR"));
             var quit = new UButton("ÇIKIŞ", ButtonStyle.MenuItem, Application.Quit);
             quit.style.borderBottomWidth = 0;
             list.Add(quit);
@@ -410,7 +416,7 @@ namespace Vexa.Client.UI
         {
             string map = string.IsNullOrEmpty(s.MapName) ? "SUNUCU" : s.MapName.ToUpperInvariant();
             _title.text = map == "TRAINING" ? "EĞİTİM" : map;
-            string mode = s.Setup == null ? "ÇEVRİMİÇİ MAÇ" : s.Setup.Mode == GameMode.Competitive ? "REKABETÇİ" : s.Setup.Mode == GameMode.Casual ? "BASİT" : s.Setup.Mode == GameMode.Deathmatch ? "ÖLÜM MAÇI" : "ANTRENMAN";
+            string mode = s.IsDemo ? "DEMO" : s.Setup == null ? "ÇEVRİMİÇİ MAÇ" : s.Setup.Mode == GameMode.Competitive ? "REKABETÇİ" : s.Setup.Mode == GameMode.Casual ? "BASİT" : s.Setup.Mode == GameMode.Deathmatch ? "ÖLÜM MAÇI" : "ANTRENMAN";
             _mode.text = mode;
             _status.text = string.IsNullOrEmpty(s.Status) ? (s.Client != null && s.Client.Welcomed ? "Harita yükleniyor..." : "Bağlanılıyor...") : s.Status;
             float t = Mathf.Repeat(Time.unscaledTime * 0.8f, 1f);
@@ -421,18 +427,23 @@ namespace Vexa.Client.UI
     /// <summary>In-game Esc menu.</summary>
     public sealed class PauseView : VisualElement
     {
-        private readonly VisualElement _main, _settings, _teamRow;
+        private readonly VisualElement _main, _settings, _teamRow, _tourRow;
         private readonly SettingsView _settingsView = new SettingsView();
-        private readonly Label _info;
+        private readonly Label _info, _eyebrow;
+        private readonly UButton _leave;
+        private readonly UButton _ready, _tac, _tech, _unpause, _stay, _switch;
         public event Action Resume, Leave;
         public Action<Team> PickTeam;
+        /// <summary>Sends a chat command (".ready", ".tac", ...).</summary>
+        public Action<string> Command;
 
         public PauseView()
         {
             this.Fill().Bg(Theme.Scrim);
             pickingMode = PickingMode.Position;
             _main = U.Col(10).Abs(96, 120).W(420);
-            _main.Add(U.Eyebrow("MAÇ ARKADA DEVAM EDİYOR", Theme.Accent));
+            _eyebrow = U.Eyebrow("MAÇ ARKADA DEVAM EDİYOR", Theme.Accent);
+            _main.Add(_eyebrow);
             _main.Add(U.Head("MENÜ", 96, null, Fonts.Display));
             var resume = new UButton("DEVAM ET", ButtonStyle.Primary, () => Resume?.Invoke());
             resume.Margin(18, 0, 0, 0);
@@ -442,8 +453,17 @@ namespace Vexa.Client.UI
             tr.Kids(TeamButton("SALDIRI · T", Theme.T, Team.T), TeamButton("SAVUNMA · CT", Theme.CT, Team.CT));
             _teamRow.Kids(U.Eyebrow("TAKIM DEĞİŞTİR"), tr);
             _main.Add(_teamRow);
+            // tournament controls (each one is a chat command, so they also work by typing)
+            _tourRow = U.Col(8).Margin(16, 0, 0, 0);
+            var t1 = U.Row(8).Wrap();
+            _ready = Cmd("HAZIRIM", ".ready"); _stay = Cmd("TARAFTA KAL", ".stay"); _switch = Cmd("TARAF DEĞİŞTİR", ".switch");
+            _tac = Cmd("TAKTİK MOLA", ".tac"); _tech = Cmd("TEKNİK DURAKLATMA", ".tech"); _unpause = Cmd("DEVAM (UNPAUSE)", ".unpause");
+            t1.Kids(_ready, _stay, _switch, _tac, _tech, _unpause);
+            _tourRow.Kids(U.Eyebrow("TURNUVA"), t1);
+            _main.Add(_tourRow);
             _main.Add(new UButton("AYARLAR", ButtonStyle.Ghost, () => ShowSettings(true)).Margin(16, 0, 0, 0));
-            _main.Add(new UButton("MAÇTAN AYRIL", ButtonStyle.Danger, () => Leave?.Invoke()).Margin(8, 0, 0, 0));
+            _leave = new UButton("MAÇTAN AYRIL", ButtonStyle.Danger, () => Leave?.Invoke());
+            _main.Add(_leave.Margin(8, 0, 0, 0));
             _info = U.Text("", 15, Fonts.Body, Theme.Muted).Margin(24, 0, 0, 0);
             _info.style.whiteSpace = WhiteSpace.Normal;
             _main.Add(_info);
@@ -455,6 +475,13 @@ namespace Vexa.Client.UI
             _settings.Kids(head, _settingsView);
             hierarchy.Add(_settings);
             ShowSettings(false);
+        }
+
+        UButton Cmd(string text, string cmd)
+        {
+            var b = new UButton(text, ButtonStyle.Ghost, () => Command?.Invoke(cmd), 16);
+            b.style.marginBottom = 8;
+            return b;
         }
 
         UButton TeamButton(string text, Color c, Team t)
@@ -472,11 +499,30 @@ namespace Vexa.Client.UI
         }
         public bool SettingsOpen => _settings.Visible();
 
-        public void Open(ClientGame c)
+        public void Open(ClientGame c, GameSession s)
         {
             ShowSettings(false);
+            bool demo = s != null && s.IsDemo;
             bool rounds = c != null && (c.Mode == GameMode.Competitive || c.Mode == GameMode.Casual);
-            _teamRow.Show(rounds);
+            bool tour = c != null && (c.Flags & MatchFlags.Tournament) != 0 && !demo;
+            bool locked = tour; // tournament rosters fix the teams
+            _teamRow.Show(rounds && !demo && !locked);
+            _tourRow.Show(tour && c.LocalTeam != Team.None);
+            if (tour)
+            {
+                var f = c.Flags;
+                _ready.Show((f & MatchFlags.WaitingReady) != 0);
+                bool pick = (f & MatchFlags.SidePick) != 0 && c.LocalTeam == c.KnifeWinner;
+                _stay.Show(pick); _switch.Show(pick);
+                bool paused = (f & (MatchFlags.TechnicalPause | MatchFlags.PausePending)) != 0;
+                _tac.Show(!paused && (f & MatchFlags.WaitingReady) == 0);
+                _tech.Show(!paused && (f & MatchFlags.WaitingReady) == 0);
+                _unpause.Show(paused);
+                _tac.Text = $"TAKTİK MOLA ({(c.LocalTeam == Team.T ? c.TimeoutsT : c.TimeoutsCT)})";
+            }
+            _eyebrow.text = demo ? "DEMO DURAKLATILMADI" : "MAÇ ARKADA DEVAM EDİYOR";
+            _leave.Text = demo ? "DEMODAN ÇIK" : "MAÇTAN AYRIL";
+            if (demo) { _info.text = "Demo oynatılıyor."; return; }
             _info.text = c == null ? "" : $"Ping {c.PingMs} ms · {c.TickRate} tick sunucu · Raund sırasında takım değiştirirsen ölürsün ve yeni takımında sonraki raundda doğarsın.";
         }
     }

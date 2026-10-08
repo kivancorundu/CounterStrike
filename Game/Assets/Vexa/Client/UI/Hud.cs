@@ -11,7 +11,7 @@ namespace Vexa.Client.UI
     /// In-game HUD: round bar, radar, money, kill feed, banners, crosshair, vitals, weapons, progress bars,
     /// damage direction, flash and scope overlays. Reads everything from <see cref="ClientGame"/> each frame.
     /// </summary>
-    public sealed class HudView : VisualElement
+    public sealed partial class HudView : VisualElement
     {
         private ClientGame _c;
         private GameSession _s;
@@ -45,6 +45,8 @@ namespace Vexa.Client.UI
         private readonly Label _deathTitle, _deathSub;
         private string _killedBy = "";
         // bottom
+        private readonly VisualElement _vitals;
+        private float _diedAt = -1;
         private readonly Label _hp, _armor, _armorTag, _kitTag, _clip, _reserve, _weaponName, _netStats;
         private readonly VisualElement _hpBar, _armorBar, _armorBlock, _inventory, _ammoBox;
         private readonly List<Label> _invRows = new List<Label>();
@@ -167,6 +169,7 @@ namespace Vexa.Client.UI
 
             // ---------- vitals ----------
             var vitals = U.Row(2).Abs(20, null, null, 20).Align(Align.Stretch);
+            _vitals = vitals;
             var hpBlock = VitalBlock(out _hp, out _hpBar, HealthIcon(), 176);
             _armorBlock = VitalBlock(out _armor, out _armorBar, ArmorIcon(), 156);
             _armorTag = U.Head("KASK", 13, Theme.Muted, Fonts.DisplayBold, 2).Abs(null, 10, 14);
@@ -215,10 +218,11 @@ namespace Vexa.Client.UI
             _stickKnob.style.position = Position.Absolute;
             _touchLayer.Kids(_stickBase, _stickKnob);
             var mobileBar = U.Row(6).Abs(290, 20);
-            mobileBar.Kids(MobileButton("MENÜ", () => MobilePause?.Invoke()), MobileButton("SATIN AL", () => MobileBuy?.Invoke()), MobileButton("SKOR", () => MobileScore?.Invoke()));
+            mobileBar.Kids(MobileButton("MENÜ", () => MobilePause?.Invoke()), MobileButton("SATIN AL", () => MobileBuy?.Invoke()), MobileButton("SKOR", () => MobileScore?.Invoke()), MobileButton("SOHBET", () => OpenChat(false)));
             _touchLayer.Add(mobileBar);
             hierarchy.Add(_touchLayer);
             _touchLayer.Show(false);
+            BuildExtras();
         }
 
         // ================= building blocks =================
@@ -318,11 +322,14 @@ namespace Vexa.Client.UI
             if (_c != null)
             {
                 _c.Killed -= OnKill; _c.Hit -= OnHit; _c.RoundEnded -= OnRoundEnd; _c.GameEventReceived -= OnEvent;
+                _c.ChatReceived -= OnChat;
             }
             _s = s; _c = s?.Client;
             ClearTransient();
+            ClearExtras();
             if (_c == null) return;
             _c.Killed += OnKill; _c.Hit += OnHit; _c.RoundEnded += OnRoundEnd; _c.GameEventReceived += OnEvent;
+            _c.ChatReceived += OnChat;
         }
 
         void ClearTransient()
@@ -359,6 +366,7 @@ namespace Vexa.Client.UI
 
         void OnKill(KillEvent k)
         {
+            if (_s != null && _s.Seeking) return;
             var c = _c;
             var row = U.Row(10).Align(Align.Center).Bg(Theme.Panel).Pad(5, 12);
             bool mine = k.Killer == c.LocalId || k.Victim == c.LocalId;
@@ -407,6 +415,7 @@ namespace Vexa.Client.UI
 
         void OnHit(HitEvent h)
         {
+            if (_s != null && _s.Seeking) return;
             if (h.Victim != _c.LocalId || h.Attacker == _c.LocalId || h.Attacker == 0) return;
             if (!_c.TryGetRemotePose(h.Attacker, out var pose)) return;
             var d = pose.Position - _c.Predicted.Position;
@@ -426,6 +435,7 @@ namespace Vexa.Client.UI
 
         void OnRoundEnd(ClientGame.RoundEndInfo info)
         {
+            if (_s != null && _s.Seeking) return;
             string team = info.Winner == Team.T ? "SALDIRANLAR KAZANDI" : info.Winner == Team.CT ? "SAVUNANLAR KAZANDI" : "BERABERE";
             _roundEndTitle.text = team;
             _roundEndBand.Bg(Theme.TeamColor(info.Winner));
@@ -453,6 +463,7 @@ namespace Vexa.Client.UI
 
         void OnEvent(GameEvent e)
         {
+            if (_s != null && _s.Seeking) return;
             var c = _c;
             switch (e.Type)
             {
@@ -594,7 +605,14 @@ namespace Vexa.Client.UI
                 el.style.opacity = 1f - age / 1.4f;
             }
 
-            // ---- vitals ----
+            // ---- vitals (the watched player's while spectating) ----
+            RemoteState tp = default;
+            bool spec = s.Spectating && c.TryGetRemotePose(s.Spectate.Target, out tp);
+            if (spec)
+            {
+                st.Health = tp.Health; st.Armor = tp.Armor; st.Helmet = tp.Helmet; st.HasKit = tp.HasKit; st.HasC4 = tp.HasC4;
+            }
+            _vitals.Show(st.Alive || spec);
             int hp = Mathf.Max(0, st.Health);
             _hp.text = hp.ToString();
             _hp.style.color = hp <= 25 ? Theme.Danger : Theme.Text;
@@ -628,8 +646,13 @@ namespace Vexa.Client.UI
                 _weaponName.text = Items.GrenadeName(st.ActiveGrenade).ToUpperInvariant();
             }
             else { _clip.text = ""; _reserve.Show(false); }
-            _ammoBox.Show(st.Alive);
-            _inventory.Show(st.Alive);
+            _ammoBox.Show(st.Alive || spec);
+            _inventory.Show(st.Alive && !spec);
+            if (spec)
+            {
+                _weaponName.text = ((Weapons.Get(tp.Weapon)?.Name ?? "") + (tp.Reloading ? " · DOLDURULUYOR" : "")).ToUpperInvariant();
+                _clip.text = ""; _reserve.Show(false);
+            }
 
             // ---- progress (plant / defuse) ----
             float prog = -1; string progText = ""; Color progColor = Theme.CT;
@@ -654,7 +677,11 @@ namespace Vexa.Client.UI
 
             // ---- death card ----
             bool dead = !st.Alive && c.Header.Phase != GamePhase.Warmup || (!st.Alive && c.Mode == GameMode.Deathmatch);
-            _deathCard.Show(dead && c.Header.Phase != GamePhase.MatchOver);
+            if (!dead || c.LocalTeam == Team.None) _diedAt = -1;
+            else if (_diedAt < 0) _diedAt = now;
+            // the death card stays a moment, then spectating takes over
+            bool showDeath = dead && c.LocalTeam != Team.None && c.Header.Phase != GamePhase.MatchOver && (!s.Spectating || now - _diedAt < 2.5f);
+            _deathCard.Show(showDeath);
             if (dead)
             {
                 _deathTitle.text = "ÖLDÜN";
@@ -668,8 +695,10 @@ namespace Vexa.Client.UI
             if (VexaSettings.ShowNetStats)
                 _netStats.text = $"{Mathf.RoundToInt(1f / Mathf.Max(0.0001f, Time.smoothDeltaTime))} FPS · {c.PingMs} ms · {c.TickRate} tick · düzeltme {c.Mispredictions}";
 
+            TickExtras(dt, spec && !showDeath);
+
             // ---- mobile ----
-            bool mobile = s.Input.MobileControls;
+            bool mobile = s.Input.MobileControls && !s.IsDemo;
             _touchLayer.Show(mobile);
             if (mobile) UpdateTouch(s);
         }
@@ -782,8 +811,10 @@ namespace Vexa.Client.UI
             var tc = s.Input.Touch;
             float w = resolvedStyle.width, h = resolvedStyle.height;
             if (w <= 0 || h <= 0) return;
-            if (_touchButtons.Count == 0)
+            if (_touchButtons.Count != tc.Layout.Count)
             {
+                foreach (var (old, _) in _touchButtons) old.RemoveFromHierarchy();
+                _touchButtons.Clear();
                 foreach (var b in tc.Layout)
                 {
                     var el = U.Box().Align(Align.Center).Justify(Justify.Center).Radius(8).Border(1, Theme.WithAlpha(Color.white, 0.25f));
@@ -793,12 +824,16 @@ namespace Vexa.Client.UI
                     _touchButtons.Add((el, b));
                 }
             }
-            foreach (var (el, b) in _touchButtons)
+            float alpha = VexaSettings.TouchOpacity;
+            for (int i = 0; i < _touchButtons.Count; i++)
             {
+                var el = _touchButtons[i].el;
+                var b = tc.Layout[i]; // read live: the layout editor can change it
                 el.style.left = b.Norm.x * w; el.style.top = b.Norm.y * h;
                 el.style.width = b.Norm.width * w; el.style.height = b.Norm.height * h;
                 bool on = b.Button != Buttons.None && (tc.Buttons & b.Button) != 0;
-                el.style.backgroundColor = on ? Theme.WithAlpha(Theme.Accent, 0.45f) : Theme.WithAlpha(Theme.Ink, 0.35f);
+                el.style.backgroundColor = on ? Theme.WithAlpha(Theme.Accent, 0.45f * alpha + 0.2f) : Theme.WithAlpha(Theme.Ink, 0.55f * alpha);
+                el.style.opacity = Mathf.Clamp01(alpha + 0.2f);
             }
             _stickBase.Show(tc.StickActive); _stickKnob.Show(tc.StickActive);
             if (tc.StickActive)

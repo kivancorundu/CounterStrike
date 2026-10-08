@@ -66,6 +66,12 @@ namespace Vexa.Client.UI
         public static bool RadarRotate = true;
         public static float RadarZoom = 1f;
         public static float HudScale = 1f;
+        public static bool RecordDemos = false;
+        public static bool Gyro = false;
+        public static float GyroSensitivity = 1f;
+        public static bool GyroInvertX, GyroInvertY;
+        public static float TouchOpacity = 0.6f;
+        public static string TouchLayout = "";   // saved mobile button rects (see TouchControls)
         public static string LastHost = "127.0.0.1";
         public static int LastPort = 27015;
         public static int LastMode = 0, LastMap = 0, LastSide = 0, LastDifficulty = 1, LastTeamSize = 5, LastTick = 64, LastDmBots = 7;
@@ -86,6 +92,13 @@ namespace Vexa.Client.UI
             RadarRotate = PlayerPrefs.GetInt("vexa.radarrotate", RadarRotate ? 1 : 0) == 1;
             RadarZoom = PlayerPrefs.GetFloat("vexa.radarzoom", RadarZoom);
             HudScale = PlayerPrefs.GetFloat("vexa.hudscale", HudScale);
+            RecordDemos = PlayerPrefs.GetInt("vexa.recorddemos", RecordDemos ? 1 : 0) == 1;
+            Gyro = PlayerPrefs.GetInt("vexa.gyro", Gyro ? 1 : 0) == 1;
+            GyroSensitivity = PlayerPrefs.GetFloat("vexa.gyrosens", GyroSensitivity);
+            GyroInvertX = PlayerPrefs.GetInt("vexa.gyroinvx", 0) == 1;
+            GyroInvertY = PlayerPrefs.GetInt("vexa.gyroinvy", 0) == 1;
+            TouchOpacity = PlayerPrefs.GetFloat("vexa.touchopacity", TouchOpacity);
+            TouchLayout = PlayerPrefs.GetString("vexa.touchlayout", TouchLayout);
             LastHost = PlayerPrefs.GetString("vexa.host", LastHost);
             LastPort = PlayerPrefs.GetInt("vexa.port", LastPort);
             LastMode = PlayerPrefs.GetInt("vexa.mode", LastMode);
@@ -133,6 +146,13 @@ namespace Vexa.Client.UI
             PlayerPrefs.SetInt("vexa.radarrotate", RadarRotate ? 1 : 0);
             PlayerPrefs.SetFloat("vexa.radarzoom", RadarZoom);
             PlayerPrefs.SetFloat("vexa.hudscale", HudScale);
+            PlayerPrefs.SetInt("vexa.recorddemos", RecordDemos ? 1 : 0);
+            PlayerPrefs.SetInt("vexa.gyro", Gyro ? 1 : 0);
+            PlayerPrefs.SetFloat("vexa.gyrosens", GyroSensitivity);
+            PlayerPrefs.SetInt("vexa.gyroinvx", GyroInvertX ? 1 : 0);
+            PlayerPrefs.SetInt("vexa.gyroinvy", GyroInvertY ? 1 : 0);
+            PlayerPrefs.SetFloat("vexa.touchopacity", TouchOpacity);
+            PlayerPrefs.SetString("vexa.touchlayout", TouchLayout ?? "");
             PlayerPrefs.SetString("vexa.host", LastHost);
             PlayerPrefs.SetInt("vexa.port", LastPort);
             PlayerPrefs.SetInt("vexa.mode", LastMode);

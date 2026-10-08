@@ -79,6 +79,9 @@ namespace Vexa.Client.UI
             _sub.text = rounds ? $"Raund {Mathf.Max(1, c.Round)} / {c.MaxRounds} · {c.WinRounds} raund kazanan alır"
                                : c.Mode == GameMode.Deathmatch ? "Süre bitince en çok öldüren kazanır" : "Serbest antrenman";
             _ctWrap.Show(rounds); _tWrap.Show(rounds); _history.Show(rounds);
+            bool tour = (c.Flags & MatchFlags.Tournament) != 0;
+            _ctHeadName.text = tour ? c.NameOfTeam(Team.CT).ToUpperInvariant() + " · CT" : "SAVUNMA · CT";
+            _tHeadName.text = tour ? c.NameOfTeam(Team.T).ToUpperInvariant() + " · T" : "SALDIRI · T";
             ((VisualElement)_tableDm.userData).Show(!rounds);
 
             int played = Mathf.Max(1, c.History.Count);

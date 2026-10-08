@@ -22,8 +22,8 @@ namespace Vexa.Client.UI
             style.flexDirection = FlexDirection.Row;
             style.flexGrow = 1;
             var tabCol = U.Col(4).W(220).NoShrink();
-            string[] names = { "OYUN", "NİŞANGAH", "GÖRÜNTÜ", "SES", "KONTROLLER" };
-            _pages = new Func<VisualElement>[] { GamePage, CrosshairPage, VideoPage, AudioPage, ControlsPage };
+            string[] names = { "OYUN", "NİŞANGAH", "GÖRÜNTÜ", "SES", "TUŞLAR", "MOBİL" };
+            _pages = new Func<VisualElement>[] { GamePage, CrosshairPage, VideoPage, AudioPage, ControlsPage, MobilePage };
             for (int i = 0; i < names.Length; i++)
             {
                 int k = i;
@@ -82,14 +82,14 @@ namespace Vexa.Client.UI
             p.Add(U.Eyebrow("FARE").Margin(12, 0, 0, 0));
             p.Add(Slider("Hassasiyet", 0.1f, 8f, 0.01f, VexaSettings.Sensitivity, v => VexaSettings.Sensitivity = v));
             p.Add(Slider("Dürbün çarpanı", 0.5f, 1.5f, 0.01f, VexaSettings.ZoomSensitivity, v => VexaSettings.ZoomSensitivity = v));
-            if (Application.isMobilePlatform)
-                p.Add(Slider("Dokunmatik hassasiyet", 0.05f, 0.6f, 0.01f, VexaSettings.TouchSensitivity, v => VexaSettings.TouchSensitivity = v));
             p.Add(U.Text("Hassasiyet CS ile aynı ölçekte (m_yaw 0.022); oradaki değerini doğrudan girebilirsin.", 14, Fonts.Body, Theme.Muted));
             p.Add(U.Eyebrow("RADAR").Margin(12, 0, 0, 0));
             p.Add(ToggleRow("Radar dönsün", VexaSettings.RadarRotate, v => VexaSettings.RadarRotate = v));
             p.Add(Slider("Radar yakınlaştırma", 0.5f, 2f, 0.05f, VexaSettings.RadarZoom, v => VexaSettings.RadarZoom = v));
             p.Add(U.Eyebrow("ARAYÜZ").Margin(12, 0, 0, 0));
             p.Add(ToggleRow("Ağ istatistikleri", VexaSettings.ShowNetStats, v => VexaSettings.ShowNetStats = v));
+            p.Add(U.Eyebrow("KAYIT").Margin(12, 0, 0, 0));
+            p.Add(ToggleRow("Maçlarımı kaydet (demo)", VexaSettings.RecordDemos, v => VexaSettings.RecordDemos = v));
             return p;
         }
 
@@ -236,23 +236,84 @@ namespace Vexa.Client.UI
             return p;
         }
 
+        // ---------------- key bindings ----------------
+        private InputAction? _rebinding;
+        private UButton _rebindButton;
+        private IVisualElementScheduledItem _rebindPoll;
+
         VisualElement ControlsPage()
         {
-            var p = U.Col().W(620);
-            p.Add(U.Eyebrow("TUŞLAR").Margin(0, 0, 10, 0));
-            (string, string)[] keys =
+            var p = U.Col().W(700);
+            var head = U.Row(12).Align(Align.Center).Margin(0, 0, 10, 0);
+            head.Kids(U.Eyebrow("TUŞ ATAMALARI"), U.Spacer(), new UButton("VARSAYILANLAR", ButtonStyle.Ghost, () => { KeyBindings.ResetDefaults(); Select(_current); }, 16));
+            p.Add(head);
+            p.Add(U.Text("Değiştirmek için tuşa tıkla, sonra yeni tuşa (ya da fare tuşuna) bas. Esc iptal eder.", 14, Fonts.Body, Theme.Muted).Margin(0, 0, 8, 0));
+            var scroll = new ScrollView(ScrollViewMode.Vertical);
+            scroll.style.maxHeight = 640;
+            foreach (var (action, label, _) in KeyBindings.Defaults)
             {
-                ("Hareket", "W A S D"), ("Zıpla", "Boşluk"), ("Eğil", "Ctrl / C"), ("Yürü (sessiz)", "Shift"),
-                ("Ateş / ikincil", "Sol tık / Sağ tık"), ("Doldur", "R"), ("Kullan / imha et", "E"), ("Silah bırak", "G"),
-                ("Birincil · İkincil · Bıçak", "1 · 2 · 3"), ("Bombalar · C4", "4 · 5"), ("Son silah", "Q"),
-                ("Satın al", "B"), ("Skor tablosu", "Tab"), ("Menü", "Esc"),
-            };
-            foreach (var (a, k) in keys)
-            {
-                var row = U.Row().Justify(Justify.SpaceBetween).Pad(10, 0).BorderBottom(1, Theme.Line);
-                row.Kids(U.Text(a, 17, Fonts.BodySemi), U.Head(k, 18, Theme.Accent, Fonts.DisplayBold, 1));
-                p.Add(row);
+                var a = action;
+                var row = U.Row().Align(Align.Center).Justify(Justify.SpaceBetween).Pad(6, 0).BorderBottom(1, Theme.Line);
+                UButton key = null;
+                key = new UButton(KeyBindings.KeyName(KeyBindings.Get(a)), ButtonStyle.Ghost, () => BeginRebind(a, key), 17);
+                key.W(200);
+                row.Kids(U.Text(label, 17, Fonts.BodySemi), key);
+                scroll.Add(row);
             }
+            p.Add(scroll);
+            return p;
+        }
+
+        void BeginRebind(InputAction a, UButton button)
+        {
+            if (_rebindButton != null) _rebindButton.Text = KeyBindings.KeyName(KeyBindings.Get(_rebinding.Value));
+            _rebinding = a;
+            _rebindButton = button;
+            button.Text = "TUŞA BAS...";
+            _rebindPoll?.Pause();
+            // start listening a moment later so the click that started this isn't captured
+            _rebindPoll = schedule.Execute(PollRebind).StartingIn(150).Every(16);
+        }
+
+        void PollRebind()
+        {
+            if (_rebinding == null) { _rebindPoll?.Pause(); return; }
+            if (PcInput.KeyDown(KeyCode.Escape)) { EndRebind(); return; }
+            if (PcInput.AnyKeyDown(out var k))
+            {
+                KeyBindings.Set(_rebinding.Value, k);
+                EndRebind();
+                Select(_current); // other actions may have lost this key
+            }
+        }
+
+        void EndRebind()
+        {
+            if (_rebinding != null && _rebindButton != null) _rebindButton.Text = KeyBindings.KeyName(KeyBindings.Get(_rebinding.Value));
+            _rebinding = null; _rebindButton = null;
+            _rebindPoll?.Pause();
+        }
+
+        // ---------------- mobile ----------------
+
+        VisualElement MobilePage()
+        {
+            var p = U.Col(16).W(640);
+            p.Add(U.Eyebrow("DOKUNMATİK"));
+            p.Add(Slider("Bakış hassasiyeti", 0.05f, 0.6f, 0.01f, VexaSettings.TouchSensitivity, v => VexaSettings.TouchSensitivity = v));
+            p.Add(Slider("Buton opaklığı", 0.2f, 1f, 0.05f, VexaSettings.TouchOpacity, v => VexaSettings.TouchOpacity = v, "0%"));
+            var edit = new UButton("BUTON YERLEŞİMİNİ DÜZENLE", ButtonStyle.Secondary, () => TouchLayoutEditor.Open(this));
+            edit.Self(Align.FlexStart);
+            p.Add(edit);
+            p.Add(U.Eyebrow("JİROSKOP").Margin(12, 0, 0, 0));
+            p.Add(ToggleRow("Jiroskopla nişan", VexaSettings.Gyro, v => VexaSettings.Gyro = v));
+            p.Add(Slider("Jiroskop hassasiyeti", 0.2f, 3f, 0.05f, VexaSettings.GyroSensitivity, v => VexaSettings.GyroSensitivity = v));
+            p.Add(ToggleRow("Yatay ters", VexaSettings.GyroInvertX, v => VexaSettings.GyroInvertX = v));
+            p.Add(ToggleRow("Dikey ters", VexaSettings.GyroInvertY, v => VexaSettings.GyroInvertY = v));
+            var note = U.Text("Jiroskop dokunmatik bakışa eklenir: büyük dönüşleri parmakla, ince nişanı telefonu eğerek yaparsın.", 14, Fonts.Body, Theme.Muted);
+            note.style.whiteSpace = WhiteSpace.Normal;
+            p.Add(note);
+            if (!Application.isMobilePlatform) p.Add(U.Text("Bu ayarlar mobil sürümde geçerli; yerleşimi burada önizleyebilirsin.", 14, Fonts.Body, Theme.Dim));
             return p;
         }
     }

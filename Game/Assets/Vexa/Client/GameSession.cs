@@ -28,12 +28,30 @@ namespace Vexa.Client
         public static bool InputBlocked;
         public bool Ready => Client != null && Client.Welcomed && _mapRoot != null;
 
+        // ---- spectating (dead players, spectators, demos) ----
+        public readonly Spectator Spectate = new Spectator();
+        public bool Spectating { get; private set; }
+
+        // ---- demo playback ----
+        public DemoPlayback Demo { get; private set; }
+        public bool IsDemo => Demo != null;
+        public float DemoSpeed = 1f;
+        public bool DemoPaused;
+        /// <summary>True while fast-forwarding a demo: effects and HUD events should stay quiet.</summary>
+        public bool Seeking { get; private set; }
+        public string DemoPath { get; private set; }
+        /// <summary>Raised when <see cref="Client"/> is replaced (demo seeking backwards rebuilds it).</summary>
+        public event Action ClientReplaced;
+
+        public static string DemoFolder => System.IO.Path.Combine(Application.persistentDataPath, "demos");
+
         private LiteNetTransport _clientNet, _serverNet;
         private GameObject _mapRoot;
         private readonly Dictionary<int, PlayerAvatar> _avatars = new Dictionary<int, PlayerAvatar>();
         private LocalPlayerCamera _camera;
         private ShotEffects _effects;
         private WorldVisuals _world;
+        private readonly Audio.GameAudio _audio = new Audio.GameAudio();
         private float _connectStarted;
 
         /// <summary>Everything the play screen chooses for a locally hosted match.</summary>
@@ -87,6 +105,15 @@ namespace Vexa.Client
                     for (int i = 0; i < bots; i++) s.HostServer.AddBot(BotName(i));
                 }
                 s.Connect("127.0.0.1", setup.Port, setup.PlayerName);
+                if (UI.VexaSettings.RecordDemos)
+                {
+                    try
+                    {
+                        string file = $"{DateTime.Now:yyyyMMdd-HHmm}_{setup.Map}_{setup.Mode.ToString().ToLowerInvariant()}{DemoFormat.Extension}";
+                        s.HostServer.StartRecording(System.IO.Path.Combine(DemoFolder, file));
+                    }
+                    catch (Exception e) { Debug.LogWarning("[demo] recording failed: " + e.Message); }
+                }
             }
             catch (Exception e) { s.Status = "Sunucu başlatılamadı: " + e.Message; s.Failed = true; Debug.LogException(e); }
             return s;
@@ -103,6 +130,69 @@ namespace Vexa.Client
             return s;
         }
 
+        /// <summary>Plays a .vxdemo file: a normal client fed from the file instead of the network.</summary>
+        public static GameSession PlayDemo(string path)
+        {
+            var s = Create();
+            try
+            {
+                var file = DemoFile.Read(path);
+                s.DemoPath = path;
+                s.MapName = file.Map;
+                s.Status = "Demo yükleniyor...";
+                s.StartDemoClient(file);
+            }
+            catch (Exception e) { s.Status = "Demo açılamadı: " + e.Message; s.Failed = true; Debug.LogException(e); }
+            return s;
+        }
+
+        void StartDemoClient(DemoFile file)
+        {
+            Demo = new DemoPlayback(file);
+            Client = new ClientGame(Demo, "izleyici", MapLoader.Load);
+            Client.ShotFired += OnShot;
+            Client.Hit += OnHit;
+            Spectate.Reset();
+            _audio.Bind(this);
+        }
+
+        /// <summary>Jump to a demo time (server seconds). Going backwards replays from the start.</summary>
+        public void SeekDemo(double time)
+        {
+            if (Demo == null) return;
+            time = Math.Max(Demo.File.StartTime, Math.Min(time, Demo.File.StartTime + Demo.File.Duration));
+            Seeking = true;
+            try
+            {
+                if (time < Demo.Time)
+                {
+                    StartDemoClient(Demo.File);
+                    _world.Clear();
+                    _effects.Clear();
+                    ClientReplaced?.Invoke();
+                }
+                const double step = 1.0 / 32;
+                while (Demo.Time + step < time)
+                {
+                    Demo.Advance(step);
+                    Client.Update(step, () => default);
+                }
+            }
+            finally { Seeking = false; }
+        }
+
+        public void SeekRound(int dir)
+        {
+            if (Demo == null) return;
+            var rounds = Demo.File.Rounds;
+            if (rounds.Count == 0) return;
+            double now = Demo.Time;
+            double target = -1;
+            if (dir > 0) { foreach (var r in rounds) if (r.time > now + 0.5) { target = r.time; break; } }
+            else { for (int i = rounds.Count - 1; i >= 0; i--) if (rounds[i].time < now - 3) { target = rounds[i].time; break; } if (target < 0) target = Demo.File.StartTime; }
+            if (target >= 0) SeekDemo(target);
+        }
+
         static GameSession Create()
         {
             if (Current != null) Current.Shutdown();
@@ -112,6 +202,7 @@ namespace Vexa.Client
             s.Input.MobileControls = Application.isMobilePlatform;
             s.Input.Sensitivity = UI.VexaSettings.Sensitivity;
             s.Input.TouchSensitivity = UI.VexaSettings.TouchSensitivity;
+            s.Input.Touch.ApplySaved(UI.VexaSettings.TouchLayout);
             return s;
         }
 
@@ -125,6 +216,7 @@ namespace Vexa.Client
             Client.ShotFired += OnShot;
             Client.Hit += OnHit;
             Client.Spawned += OnSpawned;
+            _audio.Bind(this);
         }
 
         void Awake()
@@ -140,16 +232,30 @@ namespace Vexa.Client
             HostServer?.Update(dt);
             if (Client == null) return;
 
-            Input.Enabled = !InputBlocked;
+            if (IsDemo)
+            {
+                if (!DemoPaused)
+                {
+                    float d = dt * DemoSpeed;
+                    Demo.Advance(d);
+                    Client.Update(d, () => default);
+                }
+                Input.Enabled = false;
+                Input.UpdateFrame();
+            }
+            else
+            {
+                Input.Enabled = !InputBlocked;
             if (Client.Welcomed)
             {
                 var def = Client.Predicted.ActiveDef;
                 Input.ZoomSensitivityScale = Client.Predicted.Zoom > 0 && def.ZoomFov != null ? def.ZoomFov[Client.Predicted.Zoom - 1] / 90f * UI.VexaSettings.ZoomSensitivity : 1f;
             }
-            Input.UpdateFrame();
-            Client.Update(dt, Input.SampleCommand);
+                Input.UpdateFrame();
+                Client.Update(dt, Input.SampleCommand);
+            }
 
-            if (Client.Disconnected)
+            if (!IsDemo && Client.Disconnected)
             {
                 Status = Client.Welcomed ? "Sunucu bağlantısı koptu." : "Sunucuya bağlanılamadı.";
                 Failed = true;
@@ -157,7 +263,7 @@ namespace Vexa.Client
             }
             if (!Client.Welcomed)
             {
-                if (Time.unscaledTime - _connectStarted > 10f) { Status = "Bağlantı zaman aşımı. Sunucu adresini kontrol et."; Failed = true; }
+                if (!IsDemo && Time.unscaledTime - _connectStarted > 10f) { Status = "Bağlantı zaman aşımı. Sunucu adresini kontrol et."; Failed = true; }
                 return;
             }
             Status = "";
@@ -171,10 +277,23 @@ namespace Vexa.Client
                 _sideRequested = true;
                 if (Setup.Side != Team.None && Setup.Mode != GameMode.Deathmatch) Client.SelectTeam(Setup.Side);
             }
+            UpdateSpectating();
             SyncAvatars();
             _camera.Update(this, dt);
             _effects.Update(dt);
             _world.Update(Client, dt);
+            _audio.Update(dt);
+        }
+
+        void UpdateSpectating()
+        {
+            bool canWatch = !Client.Predicted.Alive || Client.LocalTeam == Team.None;
+            Spectating = canWatch && Spectate.Update(Client, Time.unscaledTime);
+            if (!Spectating || InputBlocked || IsDemo) return;
+            // dead in a match: mouse buttons cycle players, jump switches first/third person (like CS)
+            if (PcInput.Down(InputAction.Attack)) Spectate.Next(1);
+            else if (PcInput.Down(InputAction.Attack2)) Spectate.Next(-1);
+            if (PcInput.Down(InputAction.Jump)) Spectate.ToggleMode();
         }
 
         void SyncAvatars()
@@ -186,6 +305,9 @@ namespace Vexa.Client
                 if (!Client.TryGetRemotePose(r.Id, out var pose)) continue;
                 if (!_avatars.TryGetValue(r.Id, out var av)) { av = PlayerAvatar.Create(r.Name, pose.Team); _avatars[r.Id] = av; }
                 av.Apply(pose, r.Name);
+                // first-person spectating: don't render the body we're looking out of
+                bool hide = Spectating && Spectate.Mode == Spectator.ViewMode.InEye && Spectate.Target == r.Id && pose.Alive;
+                if (av.gameObject.activeSelf == hide) av.gameObject.SetActive(!hide);
             }
             var gone = new List<int>();
             foreach (var kv in _avatars) if (!seen.Contains(kv.Key)) gone.Add(kv.Key);
@@ -194,7 +316,7 @@ namespace Vexa.Client
 
         void OnShot(ShotInfo shot, bool local)
         {
-            if (Client?.World == null) return;
+            if (Client?.World == null || Seeking) return;
             Vector3 muzzle;
             if (local)
             {
@@ -222,6 +344,7 @@ namespace Vexa.Client
 
         void OnHit(HitEvent h)
         {
+            if (Seeking) return;
             if (h.Attacker == Client.LocalId && h.Victim != Client.LocalId)
             {
                 HitMarkerUntil = Time.unscaledTime + 0.15f;
@@ -238,6 +361,8 @@ namespace Vexa.Client
             if (_mapRoot != null) Destroy(_mapRoot);
             _effects?.Clear();
             _world?.Clear();
+            _audio.Clear();
+            HostServer?.StopRecording();
             _clientNet?.Dispose(); _clientNet = null;
             _serverNet?.Dispose(); _serverNet = null;
             Client = null; HostServer = null;

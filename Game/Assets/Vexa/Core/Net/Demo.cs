@@ -116,6 +116,37 @@ namespace Vexa.Core.Net
             return f;
         }
 
+        /// <summary>Header, duration and round count without loading the packets (for demo lists).</summary>
+        public static DemoFile ReadInfo(string path)
+        {
+            using (var stream = System.IO.File.OpenRead(path))
+            {
+                var r = new BinaryReader(stream, Encoding.UTF8, true);
+                var magic = r.ReadBytes(4);
+                for (int i = 0; i < 4; i++) if (magic.Length < 4 || magic[i] != DemoFormat.Magic[i]) throw new InvalidDataException("not a VEXA demo");
+                if (r.ReadUInt16() != DemoFormat.Version) throw new InvalidDataException("unsupported demo version");
+                var f = new DemoFile { Map = r.ReadString(), TickRate = r.ReadUInt16(), Created = r.ReadString() };
+                double first = -1, last = 0;
+                var head = new byte[2];
+                while (stream.Position + 10 <= stream.Length)
+                {
+                    double t = r.ReadDouble();
+                    ushort len = r.ReadUInt16();
+                    if (stream.Position + len > stream.Length) break;
+                    if (len >= 2) { stream.Read(head, 0, 2); stream.Seek(len - 2, SeekOrigin.Current); }
+                    else stream.Seek(len, SeekOrigin.Current);
+                    if (first < 0) first = t;
+                    last = t;
+                    if (len >= 6 && head[0] == (byte)Msg.Event && head[1] == (byte)GameEventType.RoundStart) f.Rounds.Add((t, 0));
+                }
+                f.InfoDuration = first < 0 ? 0 : last - first;
+                return f;
+            }
+        }
+
+        /// <summary>Duration from <see cref="ReadInfo"/> (packets aren't loaded there).</summary>
+        public double InfoDuration;
+
         public static DemoFile Read(string path)
         {
             using (var s = File.OpenRead(path)) return Read(s);

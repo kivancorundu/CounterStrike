@@ -23,6 +23,9 @@ namespace Vexa.Client.UI
         private PauseView _pause;
         private MatchEndView _matchEnd;
         private MenuBackdrop _backdrop;
+        private DemoControlsView _demo;
+        private Vexa.Core.Client.ClientGame _boundClient;
+        private int _chatClosedFrame = -10;
         private Screen _screen = (Screen)(-1);
         private GameSession _session;
         private bool _buyOpen, _pauseOpen, _scoreToggled, _matchEndShown;
@@ -55,7 +58,8 @@ namespace Vexa.Client.UI
             _matchEnd = new MatchEndView();
             _loading = new LoadingView();
             _menu = new MainMenuView();
-            foreach (var v in new VisualElement[] { _hud, _score, _buy, _pause, _matchEnd, _loading, _menu })
+            _demo = new DemoControlsView();
+            foreach (var v in new VisualElement[] { _hud, _demo, _score, _buy, _pause, _matchEnd, _loading, _menu })
             {
                 _root.Add(v);
                 v.Show(false);
@@ -64,6 +68,8 @@ namespace Vexa.Client.UI
             _pause.Resume += () => _pauseOpen = false;
             _pause.Leave += LeaveMatch;
             _pause.PickTeam = t => { _session?.Client?.SelectTeam(t); _pauseOpen = false; };
+            _pause.Command = cmd => { _session?.Client?.SendChat(cmd, false); _pauseOpen = false; };
+            _demo.Exit += LeaveMatch;
             _matchEnd.Leave += LeaveMatch;
             _buy.Close += () => _buyOpen = false;
             _loading.Cancel += LeaveMatch;
@@ -71,6 +77,8 @@ namespace Vexa.Client.UI
             _hud.MobileBuy = () => ToggleBuy();
             _hud.MobileScore = () => _scoreToggled = !_scoreToggled;
             _backdrop = new MenuBackdrop();
+            UiSound.Clicked += () => Audio.GameAudio.PlayUi("ui_click", 0.5f);
+            UiSound.Hovered += () => Audio.GameAudio.PlayUi("ui_hover", 0.18f);
         }
 
         void LeaveMatch()
@@ -119,17 +127,22 @@ namespace Vexa.Client.UI
             _menu.Show(screen == Screen.Menu);
             _loading.Show(screen == Screen.Loading);
             _hud.Show(screen == Screen.Game);
+            _demo.Show(screen == Screen.Game && s != null && s.IsDemo);
             _buy.Show(false); _score.Show(false); _pause.Show(false); _matchEnd.Show(false);
             _buyOpen = _pauseOpen = _scoreToggled = _matchEndShown = false;
             if (screen == Screen.Menu) { _backdrop.Enable(); _menu.ShowPage(0); }
             else _backdrop.Disable();
             if (screen == Screen.Loading) { _menu.ShowError(""); _loading.Open(s); }
-            if (screen == Screen.Game)
-            {
-                _hud.Bind(s);
-                _buy.Bind(s.Client);
-                _score.Bind(s.Client);
-            }
+            if (screen == Screen.Game) BindClient(s);
+        }
+
+        void BindClient(GameSession s)
+        {
+            _boundClient = s.Client;
+            _hud.Bind(s);
+            _buy.Bind(s.Client);
+            _score.Bind(s.Client);
+            if (s.IsDemo) _demo.Bind(s);
         }
 
         void ToggleBuy()
@@ -150,46 +163,59 @@ namespace Vexa.Client.UI
 
         void TickGame(GameSession s)
         {
+            if (s.Client != _boundClient) BindClient(s); // demo seeking rebuilds the client
             var c = s.Client;
             bool matchOver = c.Header.Phase == GamePhase.MatchOver;
+            bool rounds = c.Mode == GameMode.Competitive || c.Mode == GameMode.Casual;
+            bool chat = _hud.ChatOpen;
+            if (chat) _chatClosedFrame = Time.frameCount;
+            bool typingJustEnded = Time.frameCount - _chatClosedFrame <= 1;
 
-            // ---- keys ----
-            if (PcInput.KeyDown(KeyCode.Escape))
+            // ---- keys (none while typing in chat) ----
+            if (!chat && !typingJustEnded)
             {
-                if (_pauseOpen && _pause.SettingsOpen) _pause.ShowSettings(false);
-                else if (_buyOpen) _buyOpen = false;
-                else if (!matchOver) { _pauseOpen = !_pauseOpen; if (_pauseOpen) _pause.Open(c); }
+                if (PcInput.KeyDown(KeyCode.Escape))
+                {
+                    if (_pauseOpen && _pause.SettingsOpen) _pause.ShowSettings(false);
+                    else if (_buyOpen) _buyOpen = false;
+                    else if (!matchOver) { _pauseOpen = !_pauseOpen; if (_pauseOpen) _pause.Open(c, s); }
+                }
+                bool free = !_pauseOpen && !matchOver;
+                if (!s.IsDemo)
+                {
+                    if (free && PcInput.Down(InputAction.Buy)) ToggleBuy();
+                    if (_buyOpen)
+                    {
+                        for (int d = 1; d <= 9; d++) if (PcInput.KeyDown(KeyCode.Alpha0 + d)) _buy.Digit(d);
+                        if (!c.CanBuyNow) _buyOpen = false;
+                    }
+                    if (free && !_buyOpen && PcInput.Down(InputAction.TeamMenu) && rounds) { _pauseOpen = true; _pause.Open(c, s); }
+                    if (free && !_buyOpen && PcInput.Down(InputAction.ChatAll)) _hud.OpenChat(false);
+                    else if (free && !_buyOpen && PcInput.Down(InputAction.ChatTeam) && c.LocalTeam != Team.None) _hud.OpenChat(true);
+                }
+                else if (!_pauseOpen) _demo.Tick();
             }
-            if (!_pauseOpen && !matchOver && PcInput.KeyDown(KeyCode.B)) ToggleBuy();
-            if (_buyOpen)
-            {
-                for (int d = 1; d <= 9; d++) if (PcInput.KeyDown(KeyCode.Alpha0 + d)) _buy.Digit(d);
-                if (!c.CanBuyNow) _buyOpen = false;
-            }
-            if (!_pauseOpen && !_buyOpen && PcInput.KeyDown(KeyCode.M) && (c.Mode == GameMode.Competitive || c.Mode == GameMode.Casual))
-            {
-                _pauseOpen = true; _pause.Open(c);
-            }
-            if (_pauseOpen && !_pause.Visible()) _pause.Open(c);
+            if (_pauseOpen && !_pause.Visible()) _pause.Open(c, s);
 
-            if (matchOver && !_matchEndShown) { _matchEndShown = true; _matchEnd.Open(c); _buyOpen = _pauseOpen = false; }
+            if (matchOver && !_matchEndShown && !s.IsDemo) { _matchEndShown = true; _matchEnd.Open(c); _buyOpen = _pauseOpen = false; _hud.CloseChat(); }
 
-            bool scoreHeld = !_pauseOpen && !_buyOpen && (PcInput.KeyHeld(KeyCode.Tab) || _scoreToggled);
-            bool showScore = scoreHeld;
+            bool showScore = !_pauseOpen && !_buyOpen && !chat && (PcInput.Held(InputAction.Scoreboard) || _scoreToggled);
 
             // ---- visibility ----
             _buy.Show(_buyOpen);
             _pause.Show(_pauseOpen);
-            _score.Show(showScore && !matchOver);
+            _score.Show(showScore && !_matchEndShown);
             _matchEnd.Show(_matchEndShown);
+            _demo.Show(s.IsDemo && !_pauseOpen);
             if (_buyOpen) { _buy.Money = _hud.LocalMoney; _buy.Tick(); }
             if (showScore) _score.Tick();
 
             _hud.Tick(Time.unscaledDeltaTime);
 
-            bool blocked = _buyOpen || _pauseOpen || _matchEndShown;
+            bool blocked = _buyOpen || _pauseOpen || _matchEndShown || _hud.ChatOpen;
             GameSession.InputBlocked = blocked;
-            s.Input.SetCursorLock(!blocked);
+            // demos keep the mouse free for the playback bar
+            s.Input.SetCursorLock(!blocked && !s.IsDemo);
         }
 
         void OnDestroy()
