@@ -1,8 +1,15 @@
 {
     "name": "Vexa.Editor",
     "rootNamespace": "Vexa.EditorTools",
-    "references": ["Vexa.Core", "Vexa.Client"],
-    "includePlatforms": ["Editor"],
+    "references": [
+        "Vexa.Core",
+        "Vexa.Client",
+        "Unity.RenderPipelines.Universal.Runtime",
+        "Unity.RenderPipelines.Core.Runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": false,

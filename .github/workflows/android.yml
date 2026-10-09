@@ -1,0 +1,96 @@
+name: Android APK
+
+# Builds the game for Android phones in the cloud (GameCI + Unity) and publishes the APK as a GitHub release,
+# so it can be downloaded and installed straight from the phone.
+# Needs the Unity license as repository secrets (Settings > Secrets and variables > Actions):
+#   UNITY_EMAIL, UNITY_PASSWORD   the Unity account
+#   UNITY_LICENSE                 contents of the Unity_lic.ulf file (Personal license), or
+#   UNITY_SERIAL                  the serial key (Plus / Pro license)
+# Without them the build is skipped.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'Game/**'
+      - '.github/workflows/android.yml'
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+      UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+      UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+    steps:
+      - name: License check
+        id: license
+        run: |
+          if [ -n "$UNITY_EMAIL" ] && { [ -n "$UNITY_LICENSE" ] || [ -n "$UNITY_SERIAL" ]; }; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Unity license secrets are missing (UNITY_EMAIL, UNITY_PASSWORD and UNITY_LICENSE or UNITY_SERIAL); skipping the Android build."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Free disk space
+        if: steps.license.outputs.ok == 'true'
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          swap-storage: false
+
+      - uses: actions/checkout@v4
+        if: steps.license.outputs.ok == 'true'
+
+      - uses: actions/cache@v4
+        if: steps.license.outputs.ok == 'true'
+        with:
+          path: Game/Library
+          key: Library-Android-${{ hashFiles('Game/Packages/**', 'Game/ProjectSettings/**') }}-${{ github.sha }}
+          restore-keys: |
+            Library-Android-${{ hashFiles('Game/Packages/**', 'Game/ProjectSettings/**') }}-
+            Library-Android-
+
+      - name: Build APK
+        if: steps.license.outputs.ok == 'true'
+        uses: game-ci/unity-builder@v4
+        with:
+          projectPath: Game
+          targetPlatform: Android
+          buildName: VEXA
+          buildMethod: Vexa.EditorTools.VexaBuild.BuildAndroid
+          androidExportType: androidPackage
+
+      - name: Upload build
+        if: steps.license.outputs.ok == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: VEXA-Android-${{ github.run_number }}
+          path: build/Android
+
+      - name: Publish release (download from the phone)
+        if: steps.license.outputs.ok == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-${{ github.run_number }}
+          name: VEXA Android (build ${{ github.run_number }})
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          body: |
+            Telefona kurulum: bu sayfadaki .apk dosyasını telefondan indir, aç ve kur
+            (Android "bilinmeyen kaynaklardan yükleme" iznini ister).
+            Commit: ${{ github.sha }}
+          files: build/Android/**/*.apk

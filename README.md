@@ -62,6 +62,17 @@ Modlar: `competitive`, `casual`, `deathmatch`, `practice`. `--difficulty` 0 (kol
 6. Herhangi bir sahnede (boş sahne de olur) **Play**'e bas. VEXA ana menüsü kendiliğinden açılır.
 7. **OYNA** sekmesinde modu, haritayı, tarafı ve bot zorluğunu seç, ardından **MAÇI BAŞLAT**'a bas. Aynı sayfadaki **SUNUCUYA KATIL** bölümü 2. adımdaki sunucuya bağlanır.
 
+### 4) Telefona kurulum (bilgisayarsız, bulutta derleme)
+`.github/workflows/android.yml` oyunu GitHub Actions'ta (GameCI + Unity) Android için derler ve APK'yı bir **Release** olarak yayınlar.
+1. GitHub'da depo → **Settings → Secrets and variables → Actions → New repository secret** ile şunları ekle:
+   - `UNITY_EMAIL` ve `UNITY_PASSWORD`: Unity hesabın.
+   - `UNITY_LICENSE` (ücretsiz Personal lisans): `Unity_lic.ulf` dosyasının içeriği. Bu dosya Unity Hub'da bir kez lisans eklenince oluşur (Windows: `C:\ProgramData\Unity\Unity_lic.ulf`).
+   - veya `UNITY_SERIAL` (Plus/Pro lisans): seri numarası. Bu durumda bilgisayar gerekmez.
+2. **Actions → Android APK → Run workflow**. Sonraki her `Game/` değişikliğinde kendiliğinden çalışır (ilk derleme ~1 saat sürebilir).
+3. **Releases** sayfasındaki `.apk` dosyasını telefondan indir ve kur (Android "bilinmeyen kaynaklardan yükleme" iznini ister).
+
+Sahne, URP grafik ayarı ve koddan bulunan gölgelendiriciler derleme sırasında `Editor/VexaBuild.cs` tarafından hazırlanır (Unity'de **VEXA → Build** menüsü). Bot maçları (antrenman, ölüm maçı, rekabetçi) sunucuyu telefonun içinde çalıştırır; internet gerekmez.
+
 **Kontroller (PC):**
 
 | Tuş | İşlev |
