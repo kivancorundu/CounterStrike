@@ -95,6 +95,7 @@ namespace Vexa.Core.Server
             _net.Connected += OnConnected;
             _net.Disconnected += OnDisconnected;
             _net.Received += OnReceived;
+            InitProps();
             InitMatch();
             if (!string.IsNullOrEmpty(Config.DemoPath))
             {
@@ -333,11 +334,26 @@ namespace Vexa.Core.Server
                 p.Pending.RemoveRange(0, Math.Max(used, p.Pending.Count > 32 ? p.Pending.Count - 32 : 0));
             }
 
+            ResolveStacks();
             StepGrenades();
+            StepProps();
             StepMatch();
 
             foreach (var p in _players) _history.Record(Tick, p.Id, HitPose.From(p.State));
             SendSnapshots();
+        }
+
+        private PlayerState[] _stackStates = new PlayerState[0];
+        private int[] _stackIds = new int[0];
+
+        /// <summary>Player towers: lift riders their carrier stood up or jumped into (see <see cref="StackSolver"/>).</summary>
+        private void ResolveStacks()
+        {
+            int n = _players.Count;
+            if (_stackStates.Length < n) { _stackStates = new PlayerState[n]; _stackIds = new int[n]; }
+            for (int i = 0; i < n; i++) { _stackStates[i] = _players[i].State; _stackIds[i] = _players[i].Id; }
+            if (StackSolver.Resolve(_stackStates, _stackIds, n, World) == 0) return;
+            for (int i = 0; i < n; i++) _players[i].State = _stackStates[i];
         }
 
         private void Simulate(Player p, PlayerInput cmd)
@@ -350,8 +366,10 @@ namespace Vexa.Core.Server
             p.LastInterpTick = cmd.InterpTick;
             _ctx.Obstacles.Clear();
             foreach (var o in _players)
-                if (o != p && o.State.Alive) _ctx.Obstacles.Add(SimContext.HullOf(o.State));
+                if (o != p && o.State.Alive && !SimContext.Rides(o.State, p.Id)) _ctx.Obstacles.Add(SimContext.HullOf(o.State, o.Id));
+            AddPropObstacles(_ctx.Obstacles);
             PlayerSimulation.Step(ref p.State, cmd, _ctx);
+            PushProps(p, _ctx.Touches);
             p.LastCmdTick = cmd.Tick;
             p.CmdsProcessed++;
             _currentShooter = null;
@@ -419,6 +437,19 @@ namespace Vexa.Core.Server
                     float rem = def.Range - traveled;
                     if (rem <= 0.01f) break;
                     bool hasWorld = World.Raycast(o, dir, rem, out var wh);
+                    // props stop (or slow) bullets like thin walls, and get shoved
+                    Prop propHit = null;
+                    if (PropWorld.Props.Count > 0)
+                    {
+                        World.Dynamic.Clear();
+                        PropWorld.AddObstacles(World.Dynamic);
+                        if (World.RaycastDynamic(o, dir, hasWorld ? wh.Distance : rem, BodyKind.Prop, out var ph))
+                        {
+                            propHit = PropWorld.Get(World.Dynamic[ph.BoxIndex].Owner);
+                            wh = ph; hasWorld = true;
+                        }
+                        World.Dynamic.Clear();
+                    }
                     float lim = hasWorld ? wh.Distance : rem;
                     if (TraceTarget(shooter, o, dir, lim, rewind, hitThisPellet, out var victim, out float t, out var group, out _))
                     {
@@ -430,6 +461,7 @@ namespace Vexa.Core.Server
                         continue;
                     }
                     if (!hasWorld) break;
+                    if (propHit != null) ShootProp(propHit, shooter, dir, def.Damage * power, wh.Point);
                     float thickHU = (wh.ExitDistance - wh.Distance) / VMath.HU;
                     float cost = thickHU * Surfaces.PenetrationCostPerHU(wh.Material);
                     if (cost >= pen) break;

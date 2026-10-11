@@ -65,7 +65,11 @@ namespace Vexa.Core.Server
                 float age = (Tick - g.BornTick) * Dt;
                 if (g.RestTick < 0)
                 {
-                    var r = GrenadePhysics.Step(ref g.Position, ref g.Velocity, Dt, World);
+                    World.Dynamic.Clear();
+                    PropWorld.AddObstacles(World.Dynamic);
+                    GrenadePhysics.StepResult r;
+                    try { r = GrenadePhysics.Step(ref g.Position, ref g.Velocity, Dt, World); }
+                    finally { World.Dynamic.Clear(); }
                     if ((g.Type == GrenadeType.Molotov || g.Type == GrenadeType.Incendiary) && r.HitFloor) { Detonate(g); continue; }
                     if (r.AtRest) g.RestTick = Tick;
                 }
@@ -145,20 +149,7 @@ namespace Vexa.Core.Server
         private void ExplodeHE(Projectile g, Vector3 pos)
         {
             var c = pos + new Vector3(0, 0.1f, 0);
-            var def = Weapons.Get(WeaponId.Grenade);
-            foreach (var p in _players.ToArray())
-            {
-                if (!p.State.Alive) continue;
-                var chest = p.State.Position + new Vector3(0, p.State.HullHeight * 0.5f, 0);
-                float d = Vector3.Distance(chest, c);
-                if (d > HeRadius) continue;
-                if (!World.LineOfSight(c, chest) && !World.LineOfSight(c, p.State.EyePosition)) continue;
-                float raw = 98f * (1f - d / HeRadius);
-                var r = DamageModel.ApplyArmor(raw, 0.5f, HitGroup.Chest, p.State.Armor, p.State.Helmet);
-                _killGrenade = GrenadeType.HE;
-                ApplyDamage(g.Owner != null && _players.Contains(g.Owner) ? g.Owner : null, p, def, HitGroup.Chest, r.Health, r.Armor, false, chest);
-                _killGrenade = GrenadeType.None;
-            }
+            Blast(c, HeRadius, 98f, Knockback.HeStrength, g.Owner, GrenadeType.HE);
         }
 
         private void Flashbang(Projectile g, Vector3 pos)

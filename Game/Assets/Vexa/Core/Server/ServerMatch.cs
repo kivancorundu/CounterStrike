@@ -22,6 +22,8 @@ namespace Vexa.Core.Server
         public bool FillBots = true;
         public float DeathmatchDuration = 600f, RespawnDelay = 2f;
         public float BotDifficulty = 0.5f;   // 0 easy .. 1 expert
+        /// <summary>Explosions throw players and props around (props can always be pushed and climbed).</summary>
+        public bool FunPhysics = true;
 
         // ---- tournament (esports) settings ----
         public bool Tournament;                 // ready-up, chat commands, results file
@@ -287,6 +289,7 @@ namespace Vexa.Core.Server
             BuyEndTick = PhaseEndTick + (int)(Config.BuyTime * TickRate);
             ClearGrenades();
             WorldItems.Clear();
+            ResetProps();
             Bomb = new BombInfo();
             var used = new HashSet<int>();
             foreach (var p in _players)
@@ -855,6 +858,7 @@ namespace Vexa.Core.Server
             int n = Math.Min(WorldItems.Count, 40);
             w.Byte((byte)n);
             for (int i = 0; i < n; i++) { var it = WorldItems[i]; w.UShort((ushort)it.Id); w.Byte((byte)it.Weapon.Id); w.Vec3(it.Position); }
+            WritePropsSnapshot(w);
         }
 
         // ---------------- state messages ----------------

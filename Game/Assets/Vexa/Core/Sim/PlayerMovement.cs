@@ -9,6 +9,7 @@ namespace Vexa.Core
         public bool Landed;
         public float FallSpeed;   // m/s when landing
         public bool SteppedUp;
+        public bool Boosted;      // launched by the player (or prop) it stood on
     }
 
     /// <summary>
@@ -37,6 +38,7 @@ namespace Vexa.Core
             var c = w.Depenetrate(Center(s.Position, s.Ducked), half);
             s.Position = c - Up * half.Y;
 
+            Carry(ref s, dt, w, ref ev);
             HandleDuck(ref s, cmd, dt, w);
 
             // ---- wish direction ----
@@ -114,6 +116,28 @@ namespace Vexa.Core
             s.Stamina = MathF.Max(0f, s.Stamina - SimConstants.StaminaRecovery * dt);
             s.VelocityModifier = MathF.Min(1f, s.VelocityModifier + SimConstants.VelocityModifierRecovery * dt);
             return ev;
+        }
+
+        /// <summary>Standing on another player or a prop: move along with it. A carrier going up fast (jumping,
+        /// thrown by an explosion) launches whoever stands on it, higher than a normal jump.</summary>
+        static void Carry(ref PlayerState s, float dt, CollisionWorld w, ref MoveEvents ev)
+        {
+            s.BaseVelocity = Vector3.Zero;
+            if (!s.OnGround || s.GroundKind == BodyKind.World || !w.FindDynamic(s.GroundKind, s.GroundOwner, out var carrier)) return;
+            var cv = carrier.Velocity;
+            if (cv.Y > SimConstants.BoostMinSpeed)
+            {
+                s.Velocity.Y = MathF.Max(s.Velocity.Y, cv.Y * SimConstants.BoostScale);
+                s.OnGround = false;
+                s.GroundKind = BodyKind.World; s.GroundOwner = 0;
+                ev.Boosted = true;
+            }
+            var carry = new Vector3(cv.X, 0f, cv.Z);
+            if (carry.LengthSquared() < 1e-8f) return;
+            s.BaseVelocity = carry;
+            var feet = s.Position;
+            SlideMove(ref feet, ref carry, dt, s.Ducked, w, out _);
+            s.Position = feet;
         }
 
         static void HandleDuck(ref PlayerState s, in PlayerInput cmd, float dt, CollisionWorld w)
@@ -226,6 +250,8 @@ namespace Vexa.Core
                 var tr = w.TraceBox(start, end, half);
                 if (tr.Fraction > 0f) feet = tr.EndCenter - Up * half.Y;
                 if (!tr.Hit) break;
+                if (w.TryGetDynamic(tr.BoxIndex, out var other))
+                    w.Touches.Add(new Touch { Kind = other.Kind, Owner = other.Owner, Normal = tr.Normal, Velocity = vel });
                 blocked = true;
                 lastNormal = tr.Normal;
                 timeLeft -= timeLeft * tr.Fraction;
@@ -303,6 +329,7 @@ namespace Vexa.Core
 
         static void CategorizePosition(ref PlayerState s, CollisionWorld w)
         {
+            s.GroundKind = BodyKind.World; s.GroundOwner = 0;
             if (s.Velocity.Y > SimConstants.MaxUpwardGroundSpeed) { s.OnGround = false; return; }
             var half = HalfExtents(s.Ducked);
             var c = Center(s.Position, s.Ducked);
@@ -312,6 +339,7 @@ namespace Vexa.Core
                 s.OnGround = true;
                 s.Position = tr.EndCenter - Up * half.Y;
                 if (s.Velocity.Y < 0) s.Velocity.Y = 0;
+                if (w.TryGetDynamic(tr.BoxIndex, out var ground)) { s.GroundKind = ground.Kind; s.GroundOwner = ground.Owner; }
             }
             else s.OnGround = false;
         }

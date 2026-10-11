@@ -26,6 +26,17 @@ namespace Vexa.Core.Client
             public RemoteState Latest;
         }
 
+        /// <summary>A physics prop as this client sees it (interpolated like the other players).</summary>
+        public sealed class PropView
+        {
+            public int Id;
+            public PropKind Kind;
+            public bool Destroyed, Burning;
+            internal readonly List<(int tick, Vector3 pos, float yaw)> Snaps = new List<(int, Vector3, float)>();
+            public Vector3 Position;   // latest
+            public float Yaw;
+        }
+
         private const int BufSize = 512;
         private readonly ITransport _net;
         private readonly NetWriter _w = new NetWriter(512);
@@ -36,6 +47,8 @@ namespace Vexa.Core.Client
         private readonly SimContext _ctx;
         private readonly SimContext _replayCtx;
         private readonly Dictionary<int, Remote> _remotes = new Dictionary<int, Remote>();
+        private readonly Dictionary<int, PropView> _props = new Dictionary<int, PropView>();
+        public IEnumerable<PropView> Props => _props.Values;
         private double _acc;
         private int _lastAck = -1;
         private int _firstCmdTick = int.MaxValue;
@@ -153,11 +166,17 @@ namespace Vexa.Core.Client
                 if (Math.Abs(err) > TickRate * 0.5) ServerTickEstimate = target;   // big jump: snap
                 else ServerTickEstimate += err * Math.Min(1.0, realDt * 4.0);
             }
-            // other players block our movement too: predict against where we currently see them
+            // other players and props block our movement too: predict against where we currently see them
             _ctx.Obstacles.Clear();
             foreach (var r in _remotes.Values)
-                if (TryGetRemotePose(r.Id, out var pose) && pose.Alive)
-                    _ctx.Obstacles.Add(SimContext.HullOf(new PlayerState { Position = pose.Position, Ducked = pose.Ducked }));
+                if (TryGetRemotePose(r.Id, out var pose) && pose.Alive && !RidesLocal(pose))
+                    _ctx.Obstacles.Add(SimContext.HullOf(new PlayerState { Position = pose.Position, Ducked = pose.Ducked, Velocity = pose.Velocity }, r.Id));
+            foreach (var pv in _props.Values)
+                if (!pv.Destroyed && TryGetPropPose(pv.Id, out var pp, out _, out var pvel))
+                {
+                    var d = global::Vexa.Core.Props.Get(pv.Kind);
+                    _ctx.Obstacles.Add(new StaticBox { Min = pp - d.Half, Max = pp + d.Half, Material = d.Material, Kind = BodyKind.Prop, Owner = pv.Id, Velocity = pvel });
+                }
             _replayCtx.Obstacles.Clear();
             _replayCtx.Obstacles.AddRange(_ctx.Obstacles);
             int steps = 0;
@@ -397,6 +416,24 @@ namespace Vexa.Core.Client
             WorldItems.Clear();
             int ni = _r.Byte();
             for (int i = 0; i < ni; i++) WorldItems.Add(new ItemInfo { Id = _r.UShort(), Weapon = (WeaponId)_r.Byte(), Position = _r.Vec3() });
+            int npr = _r.Byte();
+            for (int i = 0; i < npr; i++)
+            {
+                int id = _r.UShort();
+                byte kf = _r.Byte();
+                var pos = _r.Vec3();
+                float yaw = VMath.DequantizeYaw(_r.UShort());
+                if (_r.Error) return;
+                if (!_props.TryGetValue(id, out var pv)) { pv = new PropView { Id = id }; _props[id] = pv; }
+                pv.Kind = (PropKind)(kf & 0x3F);
+                pv.Destroyed = (kf & 0x80) != 0;
+                pv.Burning = (kf & 0x40) != 0;
+                // a big jump (round reset, respawn) shouldn't be interpolated across
+                if (pv.Snaps.Count > 0 && Vector3.DistanceSquared(pv.Snaps[pv.Snaps.Count - 1].pos, pos) > 9f) pv.Snaps.Clear();
+                pv.Snaps.Add((tick, pos, yaw));
+                if (pv.Snaps.Count > 32) pv.Snaps.RemoveAt(0);
+                pv.Position = pos; pv.Yaw = yaw;
+            }
             if (_r.Error) return;
             Reconcile(ack, serverState);
         }
@@ -438,6 +475,39 @@ namespace Vexa.Core.Client
             LastCorrection = delta.Length();
             // small corrections are smoothed visually, big ones (teleports/respawns) snap
             CorrectionOffset = delta.Length() < 1.0f ? CorrectionOffset + delta : Vector3.Zero;
+        }
+
+        /// <summary>A remote player standing on the local player's head doesn't block it (the server lifts riders).</summary>
+        private bool RidesLocal(in RemoteState r)
+        {
+            if (!r.OnGround || !Predicted.Alive) return false;
+            float top = Predicted.Position.Y + Predicted.HullHeight;
+            const float w2 = 2f * SimConstants.HullHalfWidth;
+            return Math.Abs(r.Position.Y - top) < 0.08f && Math.Abs(r.Position.X - Predicted.Position.X) < w2 && Math.Abs(r.Position.Z - Predicted.Position.Z) < w2;
+        }
+
+        /// <summary>Interpolated prop at the current render time (and its velocity from the snapshots).</summary>
+        public bool TryGetPropPose(int id, out Vector3 pos, out float yaw, out Vector3 vel)
+        {
+            pos = default; yaw = 0; vel = default;
+            if (!_props.TryGetValue(id, out var pv) || pv.Snaps.Count == 0) return false;
+            float rt = RenderTick;
+            var snaps = pv.Snaps;
+            while (snaps.Count > 2 && snaps[1].tick <= rt) snaps.RemoveAt(0);
+            if (snaps.Count == 1 || rt <= snaps[0].tick) { pos = snaps[0].pos; yaw = snaps[0].yaw; return true; }
+            for (int i = 0; i < snaps.Count - 1; i++)
+            {
+                var a = snaps[i]; var b = snaps[i + 1];
+                if (rt < a.tick || rt > b.tick) continue;
+                float t = (rt - a.tick) / Math.Max(1, b.tick - a.tick);
+                pos = Vector3.Lerp(a.pos, b.pos, t);
+                yaw = a.yaw + VMath.AngleDelta(a.yaw, b.yaw) * t;
+                vel = (b.pos - a.pos) / (Math.Max(1, b.tick - a.tick) * Dt);
+                return true;
+            }
+            var last = snaps[snaps.Count - 1];
+            pos = last.pos; yaw = last.yaw;
+            return true;
         }
 
         /// <summary>Interpolated state of another player at the current render time.</summary>

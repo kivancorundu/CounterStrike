@@ -10,15 +10,25 @@ namespace Vexa.Core
         public ISimEvents Events;
         public MapData Map;
         public bool PlantAllowed = true;
-        /// <summary>Hulls of the other players; they block movement (not bullets).</summary>
+        /// <summary>Hulls of the other players and the physics props; they block movement (not bullets).</summary>
         public readonly System.Collections.Generic.List<StaticBox> Obstacles = new System.Collections.Generic.List<StaticBox>();
+        /// <summary>Moving obstacles the player ran into during the last <see cref="PlayerSimulation.Step"/> (to push props).</summary>
+        public readonly System.Collections.Generic.List<Touch> Touches = new System.Collections.Generic.List<Touch>();
 
-        public static StaticBox HullOf(in PlayerState s) => new StaticBox
+        public static StaticBox HullOf(in PlayerState s, int owner = 0) => new StaticBox
         {
             Min = new System.Numerics.Vector3(s.Position.X - SimConstants.HullHalfWidth, s.Position.Y, s.Position.Z - SimConstants.HullHalfWidth),
             Max = new System.Numerics.Vector3(s.Position.X + SimConstants.HullHalfWidth, s.Position.Y + s.HullHeight, s.Position.Z + SimConstants.HullHalfWidth),
             Material = SurfaceMaterial.Flesh,
+            Kind = BodyKind.Player,
+            Owner = owner,
+            Velocity = s.Velocity + s.BaseVelocity,
         };
+
+        /// <summary>True when <paramref name="rider"/> stands on <paramref name="carrierId"/>'s head (it must not block
+        /// the carrier from standing up or jumping: the carrier lifts it instead).</summary>
+        public static bool Rides(in PlayerState rider, int carrierId) =>
+            rider.OnGround && rider.GroundKind == BodyKind.Player && rider.GroundOwner == carrierId;
     }
 
     /// <summary>
@@ -44,8 +54,15 @@ namespace Vexa.Core
             MoveEvents ev;
             ctx.World.Dynamic.Clear();
             ctx.World.Dynamic.AddRange(ctx.Obstacles);
+            ctx.World.Touches.Clear();
+            ctx.Touches.Clear();
             try { ev = PlayerMovement.Simulate(ref s, cmd, ctx.Dt, time, ctx.World, maxSpeed, ctx.Frozen || s.Planting || s.Defusing); }
-            finally { ctx.World.Dynamic.Clear(); }
+            finally
+            {
+                ctx.Touches.AddRange(ctx.World.Touches);
+                ctx.World.Touches.Clear();
+                ctx.World.Dynamic.Clear();
+            }
             if (ev.Landed)
             {
                 int fall = PlayerMovement.FallDamage(ev.FallSpeed);

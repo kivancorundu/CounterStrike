@@ -35,6 +35,10 @@ namespace Vexa.Core
         public float Stamina;
         public float VelocityModifier;
         public float LastLandTime;
+        // what the player stands on (another player, a prop): it carries them along when it moves
+        public BodyKind GroundKind;
+        public int GroundOwner;
+        public Vector3 BaseVelocity;   // horizontal speed it is carried at (passed on up a tower)
 
         // --- vitals ---
         public bool Alive;

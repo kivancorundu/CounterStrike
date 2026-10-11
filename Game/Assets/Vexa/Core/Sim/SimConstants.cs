@@ -32,5 +32,11 @@ namespace Vexa.Core
         public const float VelocityModifierRecovery = 0.4f; // per second (tagging / landing slowdown)
         public const float SafeFallSpeed = 580f * HU;
         public const float FatalFallSpeed = 1024f * HU;
+
+        // ---- fun physics ----
+        /// <summary>A player standing on someone who moves up faster than this is launched (boost jump).</summary>
+        public const float BoostMinSpeed = 2f;
+        /// <summary>Launch speed of a rider relative to the carrier's upward speed (a jump boost throws you higher than a jump).</summary>
+        public const float BoostScale = 1.35f;
     }
 }

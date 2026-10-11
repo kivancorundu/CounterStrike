@@ -101,7 +101,7 @@ namespace Vexa.Core.Net
     /// <summary>Wire encoding for every message. Shared by client and server.</summary>
     public static class Protocol
     {
-        public const ushort Version = 2;
+        public const ushort Version = 3;
         public const string ConnectKey = "VEXA";
         public const int InputRedundancy = 4;
 
@@ -129,6 +129,7 @@ namespace Vexa.Core.Net
             w.Byte((byte)((s.OnGround ? 1 : 0) | (s.Ducked ? 2 : 0) | (s.JumpHeld ? 4 : 0) | (s.Alive ? 8 : 0) | (s.Helmet ? 16 : 0) | (s.Reloading ? 32 : 0)));
             w.Byte((byte)((s.AttackHeld ? 1 : 0) | (s.Attack2Held ? 2 : 0) | (s.ReloadHeld ? 4 : 0) | (s.InspectHeld ? 8 : 0)));
             w.Float(s.DuckAmount); w.Float(s.Stamina); w.Float(s.VelocityModifier); w.Float(s.LastLandTime);
+            w.Byte((byte)s.GroundKind); w.UShort((ushort)s.GroundOwner);
             w.Byte((byte)s.Team); w.Short(s.Health); w.Short(s.Armor);
             WriteSlot(w, s.Primary); WriteSlot(w, s.Secondary); WriteSlot(w, s.Melee);
             w.Byte((byte)s.Active); w.Byte((byte)s.LastActive);
@@ -152,6 +153,7 @@ namespace Vexa.Core.Net
             byte g = r.Byte();
             s.AttackHeld = (g & 1) != 0; s.Attack2Held = (g & 2) != 0; s.ReloadHeld = (g & 4) != 0; s.InspectHeld = (g & 8) != 0;
             s.DuckAmount = r.Float(); s.Stamina = r.Float(); s.VelocityModifier = r.Float(); s.LastLandTime = r.Float();
+            s.GroundKind = (BodyKind)r.Byte(); s.GroundOwner = r.UShort();
             s.Team = (Team)r.Byte(); s.Health = r.Short(); s.Armor = r.Short();
             s.Primary = ReadSlot(r); s.Secondary = ReadSlot(r); s.Melee = ReadSlot(r);
             s.Active = (WeaponSlotKind)r.Byte(); s.LastActive = (WeaponSlotKind)r.Byte();

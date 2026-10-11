@@ -15,6 +15,14 @@ namespace Vexa.Core
         public float Yaw;
     }
 
+    /// <summary>A movable physics prop placed in the map (position = center of its base).</summary>
+    public struct MapProp
+    {
+        public PropKind Kind;
+        public Vector3 Position;
+        public float Yaw;
+    }
+
     public struct ZoneRect
     {
         public string Name;
@@ -30,6 +38,7 @@ namespace Vexa.Core
     /// spawn T|CT|DM x y z yaw
     /// site A|B minX minZ maxX maxZ
     /// buyzone T|CT minX minZ maxX maxZ
+    /// prop crate|smallcrate|barrel|redbarrel x y z yaw
     /// </code>
     /// Units are meters. Maps are authored in Unity and exported by the editor tool.
     /// </summary>
@@ -40,6 +49,7 @@ namespace Vexa.Core
         public readonly List<SpawnPoint> Spawns = new List<SpawnPoint>();
         public readonly List<ZoneRect> Sites = new List<ZoneRect>();
         public readonly List<(Team team, ZoneRect zone)> BuyZones = new List<(Team, ZoneRect)>();
+        public readonly List<MapProp> Props = new List<MapProp>();
 
         public CollisionWorld BuildCollision()
         {
@@ -79,6 +89,10 @@ namespace Vexa.Core
                         case "buyzone":
                             m.BuyZones.Add((ParseTeam(p[1]), new ZoneRect { Name = p[1], MinX = MathF.Min(F(2), F(4)), MinZ = MathF.Min(F(3), F(5)), MaxX = MathF.Max(F(2), F(4)), MaxZ = MathF.Max(F(3), F(5)) }));
                             break;
+                        case "prop":
+                            if (!global::Vexa.Core.Props.TryParse(p[1], out var kind)) throw new FormatException("unknown prop '" + p[1] + "'");
+                            m.Props.Add(new MapProp { Kind = kind, Position = new Vector3(F(2), F(3), F(4)), Yaw = p.Length > 5 ? F(5) : 0f });
+                            break;
                         default: throw new FormatException("unknown entry '" + p[0] + "'");
                     }
                 }
@@ -103,6 +117,8 @@ namespace Vexa.Core
                 sb.AppendFormat(ci, "site {0} {1:0.###} {2:0.###} {3:0.###} {4:0.###}\n", z.Name, z.MinX, z.MinZ, z.MaxX, z.MaxZ);
             foreach (var (t, z) in BuyZones)
                 sb.AppendFormat(ci, "buyzone {0} {1:0.###} {2:0.###} {3:0.###} {4:0.###}\n", t, z.MinX, z.MinZ, z.MaxX, z.MaxZ);
+            foreach (var pr in Props)
+                sb.AppendFormat(ci, "prop {0} {1:0.###} {2:0.###} {3:0.###} {4:0.#}\n", global::Vexa.Core.Props.NameOf(pr.Kind), pr.Position.X, pr.Position.Y, pr.Position.Z, pr.Yaw);
             return sb.ToString();
         }
 

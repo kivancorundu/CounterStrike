@@ -25,7 +25,13 @@ namespace Vexa.Core
                 if (speed < 1e-4f) break;
                 float dist = speed * remaining;
                 var dir = vel / speed;
-                if (!world.Raycast(pos, dir, dist + Radius, out var hit) || hit.Distance > dist + Radius)
+                bool any = world.Raycast(pos, dir, dist + Radius, out var hit);
+                // props (crates, barrels) in world.Dynamic deflect grenades too
+                if (world.Dynamic.Count > 0 && world.RaycastDynamic(pos, dir, any ? hit.Distance : dist + Radius, BodyKind.Prop, out var ph))
+                {
+                    hit = ph; any = true;
+                }
+                if (!any || hit.Distance > dist + Radius)
                 {
                     pos += dir * dist;
                     break;

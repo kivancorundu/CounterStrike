@@ -4,10 +4,27 @@ using System.Numerics;
 
 namespace Vexa.Core
 {
+    /// <summary>What a collision box belongs to (static level geometry, a player hull, a physics prop).</summary>
+    public enum BodyKind : byte { World = 0, Player = 1, Prop = 2 }
+
     public struct StaticBox
     {
         public Vector3 Min, Max;
         public SurfaceMaterial Material;
+        // moving obstacles (CollisionWorld.Dynamic) only: who it is and how fast it moves, so whoever
+        // stands on it can be carried along
+        public BodyKind Kind;
+        public int Owner;
+        public Vector3 Velocity;
+    }
+
+    /// <summary>A moving obstacle a slide move ran into (players push props this way).</summary>
+    public struct Touch
+    {
+        public BodyKind Kind;
+        public int Owner;
+        public Vector3 Normal;     // pointing back at the mover
+        public Vector3 Velocity;   // mover's velocity before it was clipped
     }
 
     public struct TraceResult
@@ -50,6 +67,27 @@ namespace Vexa.Core
         /// The simulation fills this right before stepping one player and clears it afterwards.
         /// </summary>
         public readonly List<StaticBox> Dynamic = new List<StaticBox>();
+
+        /// <summary>Moving obstacles hit by <see cref="TraceBox"/> callers that record them (player slide moves).</summary>
+        public readonly List<Touch> Touches = new List<Touch>();
+
+        /// <summary>The dynamic obstacle a trace result hit (BoxIndex -2-j), if any.</summary>
+        public bool TryGetDynamic(int boxIndex, out StaticBox box)
+        {
+            int j = -2 - boxIndex;
+            if (boxIndex <= -2 && j < Dynamic.Count) { box = Dynamic[j]; return true; }
+            box = default;
+            return false;
+        }
+
+        /// <summary>Finds a dynamic obstacle by owner.</summary>
+        public bool FindDynamic(BodyKind kind, int owner, out StaticBox box)
+        {
+            for (int j = 0; j < Dynamic.Count; j++)
+                if (Dynamic[j].Kind == kind && Dynamic[j].Owner == owner) { box = Dynamic[j]; return true; }
+            box = default;
+            return false;
+        }
 
         public int Count => _boxes.Count;
         public StaticBox GetBox(int i) => _boxes[i];
@@ -313,6 +351,27 @@ namespace Vexa.Core
                 if (tEnter > tExit) return false;
             }
             return tExit >= 0f;
+        }
+
+        /// <summary>Ray against the dynamic obstacles of one kind (props for bullets and grenades).
+        /// hit.BoxIndex is the index into <see cref="Dynamic"/>.</summary>
+        public bool RaycastDynamic(Vector3 origin, Vector3 dir, float maxDist, BodyKind kind, out RayHit hit)
+        {
+            hit = default;
+            hit.BoxIndex = -1;
+            float best = maxDist;
+            for (int j = 0; j < Dynamic.Count; j++)
+            {
+                var bx = Dynamic[j];
+                if (bx.Kind != kind) continue;
+                if (!RaySlab(origin, dir, bx.Min, bx.Max, out float te, out float tx, out int axis)) continue;
+                if (te < 0f || te >= best) continue;
+                best = te;
+                hit.Distance = te; hit.ExitDistance = tx; hit.BoxIndex = j; hit.Material = bx.Material;
+                hit.Point = origin + dir * te;
+                hit.Normal = AxisNormal(axis, dir);
+            }
+            return hit.BoxIndex >= 0;
         }
 
         public bool LineOfSight(Vector3 a, Vector3 b)
