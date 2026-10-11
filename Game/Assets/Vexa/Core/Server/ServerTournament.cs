@@ -108,11 +108,13 @@ namespace Vexa.Core.Server
             _loss[1] = _loss[2] = 1;
             RoundsPlayed = 0;
             History.Clear();
+            ClearBans();
             _roundLog.Clear();
             foreach (var p in _players)
             {
                 p.Money = Config.StartMoney;
                 p.Kills = p.Deaths = p.Assists = p.Mvps = p.Score = p.Damage = p.Headshots = 0;
+                p.TeamKills = 0;
             }
             _resetInventories = true;
             _knifeRound = Config.Tournament && Config.KnifeRound && Config.HasRounds && !_knifeDone;

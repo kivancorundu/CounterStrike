@@ -20,6 +20,7 @@ namespace Vexa.Core.Net
         RoundEnd = 14,    // S->C  winner, reason, MVP
         Event = 15,       // S->C  bomb planted/defused, grenade detonations, purchases...
         TeamSelect = 16,  // C->S  0 auto / 1 T / 2 CT
+        Kicked = 17,      // S->C  you were removed from the match (reason); the server disconnects right after
     }
 
     public enum GameMode : byte { Deathmatch = 0, Competitive = 1, Casual = 2, Practice = 3 }
@@ -103,7 +104,7 @@ namespace Vexa.Core.Net
     /// <summary>Wire encoding for every message. Shared by client and server.</summary>
     public static class Protocol
     {
-        public const ushort Version = 3;
+        public const ushort Version = 4;
         public const string ConnectKey = "VEXA";
         public const int InputRedundancy = 4;
 

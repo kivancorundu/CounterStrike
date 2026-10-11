@@ -17,6 +17,8 @@ namespace Vexa.Core.Server
         public bool Overtime = true;
         public int OvertimeMoney = 12500;
         public bool FriendlyFire = true;
+        public int TeamKillPenalty = 3300;      // money lost per teammate killed (rounds modes)
+        public int TeamKillKickLimit = 3;       // teammates killed in one match before the server kicks you; 0 = never
         public bool FreeArmor, FreeKit;
         public int TeamSize = 5;
         public bool FillBots = true;
@@ -82,6 +84,8 @@ namespace Vexa.Core.Server
             c.BuyTime = d.Num("buyTime", c.BuyTime);
             c.BombTime = d.Num("bombTime", c.BombTime);
             c.FriendlyFire = d.Bool("friendlyFire", c.FriendlyFire);
+            c.TeamKillPenalty = d.Int("teamKillPenalty", c.TeamKillPenalty);
+            c.TeamKillKickLimit = d.Int("teamKillKick", c.TeamKillKickLimit);
             c.TeamSize = d.Int("teamSize", c.TeamSize);
             c.FillBots = d.Bool("fillBots", false);
             c.BotDifficulty = d.Num("botDifficulty", c.BotDifficulty);
@@ -517,7 +521,7 @@ namespace Vexa.Core.Server
                 else
                 {
                     attacker.Kills--; attacker.Score -= 2;
-                    if (Config.HasEconomy) AddMoney(attacker, -300);
+                    OnTeamKill(attacker, victim);
                 }
             }
             else victim.Score -= 1;

@@ -131,6 +131,8 @@ namespace Vexa.Core.Client
 
         /// <summary>True once the transport reports the server connection is gone.</summary>
         public bool Disconnected { get; private set; }
+        /// <summary>Set when the server kicked us (shown instead of "connection lost").</summary>
+        public string KickReason { get; private set; }
         /// <summary>Server time (seconds) when the local player last came alive.</summary>
         public float LocalSpawnTime { get; private set; }
         /// <summary>Raised when the local player goes from dead to alive (round start, respawn).</summary>
@@ -339,6 +341,13 @@ namespace Vexa.Core.Client
                     {
                         var info = new RoundEndInfo { Winner = (Team)_r.Byte(), Reason = (RoundEndReason)_r.Byte(), MvpId = _r.Byte(), MvpReason = _r.Byte(), MvpKills = _r.Byte() };
                         RoundEnded?.Invoke(info);
+                        break;
+                    }
+                case Msg.Kicked:
+                    {
+                        string reason = _r.String();
+                        KickReason = _r.Error || string.IsNullOrEmpty(reason) ? "Sunucudan atıldın." : reason;
+                        Log?.Invoke("kicked: " + KickReason);
                         break;
                     }
                 case Msg.Chat:

@@ -39,6 +39,8 @@ namespace Vexa.Core.Server
             // match stats
             public int Money;
             public int Kills, Deaths, Assists, Mvps, Score, Damage, Headshots;
+            public int TeamKills;            // this match, for the team-kill kick
+            public bool Kicked;              // on the way out: inputs ignored until the disconnect
             public int RoundKills, RoundDamage;
             public readonly Dictionary<int, int> DamageTaken = new Dictionary<int, int>(); // attacker id -> damage this round
             public double SpawnTime;
@@ -178,6 +180,7 @@ namespace Vexa.Core.Server
                         if (ver != Protocol.Version || p != null) { _net.Disconnect(peer); return; }
                         if (string.IsNullOrWhiteSpace(name)) name = "Player";
                         if (name.Length > 24) name = name.Substring(0, 24);
+                        if (IsBanned(name)) { RefuseBanned(peer); return; }
                         var team = TeamForJoin(name);
                         MakeRoomOnTeam(team);
                         p = Join(peer, name, team, false);
@@ -313,9 +316,11 @@ namespace Vexa.Core.Server
             _net.Poll();
             Tick++;
 
+            DropKicked();
             foreach (var p in _players.ToArray())
             {
                 if (!p.Ready) continue;
+                if (p.Kicked) { p.Pending.Clear(); continue; }
                 p.Budget = Math.Min(p.Budget + 1, MaxCmdBudget);
                 float maxCredit = MaxTimeCreditSeconds * TickRate;
                 p.TimeCredit = p.TimeCredit < 0 ? maxCredit : Math.Min(p.TimeCredit + 1, maxCredit);

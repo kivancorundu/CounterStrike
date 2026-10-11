@@ -102,6 +102,10 @@ Oyun Unity'nin fizik motorunu kullanmaz. Çarpışma ve hareket `Core/Physics` +
 - **Zaman kredisi:** Silah zamanlayıcıları komut zamanıyla çalışır. Komut numarası atlayarak hızlı ateş etmeyi önlemek için her komut, sunucu zamanına göre kazanılmış krediden harcar (en fazla 0,5 sn).
   - Test: 600 RPM tüfekle hızlı ateş denemesi 2 saniyede 4 atışta kaldı.
 - **Geri sarma penceresi sınırlı** (250 ms). Açılar sınırlandırılmış (pitch ±89°).
+- **Takım arkadaşı öldürme** (`Server/ServerTeamKill.cs`):
+  - Her öldürmede para cezası (`teamKillPenalty`, varsayılan $3300) ve sohbette uyarı ("Uyarı 1/3").
+  - Bir maçta 3. öldürmede (`teamKillKick`, 0 = kapalı) oyuncu sebebi ekranında yazılarak atılır. Aynı isimle maç bitene kadar geri giremez.
+  - Isınmadaki öldürmeler sayılmaz. Botlar cezayı öder ama atılmaz.
 - **İleride eklenecekler:**
   - görünürlük filtresi: görünmeyen düşmanı göndermeme (wallhack'e karşı)
   - istatistiksel aimbot tespiti

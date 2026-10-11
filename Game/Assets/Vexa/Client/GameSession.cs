@@ -266,7 +266,7 @@ namespace Vexa.Client
 
             if (!IsDemo && Client.Disconnected)
             {
-                Status = Client.Welcomed ? "Sunucu bağlantısı koptu." : "Sunucuya bağlanılamadı.";
+                Status = Client.KickReason ?? (Client.Welcomed ? "Sunucu bağlantısı koptu." : "Sunucuya bağlanılamadı.");
                 Failed = true;
                 return;
             }
