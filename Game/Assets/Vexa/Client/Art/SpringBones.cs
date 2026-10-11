@@ -26,7 +26,7 @@ namespace Vexa.Client.Art
 
         public static SpringBones Attach(GameObject model)
         {
-            var sb = model.GetComponent<SpringBones>() ?? model.AddComponent<SpringBones>();
+            if (!model.TryGetComponent<SpringBones>(out var sb)) sb = model.AddComponent<SpringBones>();
             sb.Collect(model.transform);
             return sb;
         }

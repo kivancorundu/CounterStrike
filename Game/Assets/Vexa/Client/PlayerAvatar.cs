@@ -69,7 +69,7 @@ namespace Vexa.Client
             }
             SpringBones.Attach(_model);
 
-            var animator = _model.GetComponent<Animator>() ?? _model.AddComponent<Animator>();
+            if (!_model.TryGetComponent<Animator>(out var animator)) animator = _model.AddComponent<Animator>();
             animator.applyRootMotion = false;
             _graph = PlayableGraph.Create("Avatar_" + name);
             _graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
