@@ -38,8 +38,9 @@ namespace Vexa.Client.UI
             var ps = ScriptableObject.CreateInstance<PanelSettings>();
             ps.scaleMode = PanelScaleMode.ScaleWithScreenSize;
             ps.referenceResolution = new Vector2Int(1920, 1080);
-            ps.screenMatchMode = PanelScreenMatchMode.MatchWidthOrHeight;
-            ps.match = Application.isMobilePlatform ? 1f : 0.5f;
+            // Expand: the whole 1920x1080 design area always fits on screen (a short or narrow window adds room
+            // instead of squeezing the layout, so absolutely placed blocks never run into each other)
+            ps.screenMatchMode = PanelScreenMatchMode.Expand;
             ps.sortingOrder = 100;
             // Unity's default runtime theme, if the project has one in Resources; otherwise our widgets are fully self-styled
             var theme = Resources.Load<ThemeStyleSheet>("UnityDefaultRuntimeTheme");

@@ -62,7 +62,10 @@ namespace Vexa.Client.UI
         {
             this.Fill();
             pickingMode = PickingMode.Position;
-            _leftShade = U.Box().Abs(0, 0, null, 0).W(640).Bg(new Color(0.03f, 0.04f, 0.055f, 0.88f)).BorderRight(1, Theme.Line);
+            // opaque ground: the empty 3D scene behind the menu (a bright sky) must never show through the text
+            this.Bg(Theme.Ink);
+            hierarchy.Add(Backdrop());
+            _leftShade = U.Box().Abs(0, 0, null, 0).W(640).Bg(new Color(0.03f, 0.04f, 0.055f, 0.96f)).BorderRight(1, Theme.Line);
             hierarchy.Add(_leftShade);
 
             _home = BuildHome();
@@ -105,13 +108,26 @@ namespace Vexa.Client.UI
             _error.Show(!string.IsNullOrEmpty(msg));
         }
 
+        /// <summary>Dark ground with a faint lime glow and diagonal bands on the right (no textures needed).</summary>
+        static VisualElement Backdrop()
+        {
+            var b = U.Box().Fill();
+            b.style.overflow = Overflow.Hidden;
+            b.Add(U.Box().Abs(null, null, -200, -260).Size(1100, 1100).Bg(new Color(0.84f, 1f, 0.24f, 0.035f)).Rotate(45));
+            b.Add(U.Box().Abs(null, null, 120, -420).Size(700, 1400).Bg(new Color(1f, 1f, 1f, 0.02f)).Rotate(30));
+            var mark = U.Head("VEXA", 340, new Color(1f, 1f, 1f, 0.035f), Fonts.Display, 20).Abs(null, null, 40, 140);
+            b.Add(mark);
+            return b;
+        }
+
         VisualElement BuildHome()
         {
             var root = U.Box().Fill();
-            var col = U.Col(10).Abs(72, 150).W(500);
+            var col = U.Col(10).Abs(72, 120).W(520);
             col.Add(U.Eyebrow("TAKTİKSEL 5'E 5 · ALFA", Theme.Accent));
-            var title = U.Head("HER MERMİ\nSAYILIR.", 104, null, Fonts.Display, -1);
-            title.style.whiteSpace = WhiteSpace.Normal;
+            // two labels instead of one with a line break: big multi-line labels can overlap their own lines
+            var title = U.Col();
+            title.Kids(U.Head("HER MERMİ", 92, null, Fonts.Display, 0).H(96), U.Head("SAYILIR.", 92, Theme.Accent, Fonts.Display, 0).H(96));
             col.Add(title);
             var desc = U.Text("Sunucu otoriteli, 128 tick'e hazır rekabetçi atış. Ekonomi, bomba, el bombaları ve botlarla tam maç.", 18, Fonts.Body, Theme.Muted).W(440);
             desc.style.whiteSpace = WhiteSpace.Normal;
