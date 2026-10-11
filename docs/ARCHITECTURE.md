@@ -160,6 +160,10 @@ Arayüz `Client/UI` altında tamamen C# ile kurulur. UXML/USS dosyası, sahne ve
   - Nişan için göğüs kemiği eğilir. Silah `RightGrip` kemiğine (sağ elin kavrama noktası) yerleşir.
   - **Kıyafet fiziği** (`Art/SpringBones`): `Jiggle_*` kemikleri (telsiz anteni, boşaltma çantası, bacak kılıfı, kayış uçları, bez) yay benzetimiyle gövdenin hareketine gecikmeyle uyar, yerçekimiyle sallanır.
 - **Birinci şahıs** (`ViewModel`): silah ve kollar 1/4 ölçekte, kameraya 4 kat daha yakın çizilir. Görüntü aynıdır ama model oyuncunun kendi gövdesinin içinde kalır, duvara girmez.
+  - Kollar tutuşa göre seçilir: `Arms/<taraf>_<tutuş>.fbx` (rifle, pistol, knife, grenade, c4). `RightArm` silahın kavrama noktasına, `LeftArm` silahın `Support` noktasına oturur.
+  - Pozlar `vexa_fparms.py` içindeki `HOLDS` tablosundadır. Oradaki `view` değerleri `ViewModel`'deki silah konumlarıyla aynı olmalıdır: biri değişirse diğeri de değişir.
+
+![Birinci şahıs tutuşları](images/firstperson.jpg)
 - **Ses** (`Audio/SoundSynth`, `GameAudio`): şimdilik tüm sesler kodla sentezlenir ve 3B konumsal çalınır. Ses paketi gelince aynı isimlerle değiştirilecek.
 
 ## Performans (zayıf PC'ler)

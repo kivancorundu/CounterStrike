@@ -131,16 +131,16 @@ namespace Vexa.Client.Art
             return go;
         }
 
-        /// <summary>First-person forearms: children "RightArm" and "LeftArm" with the palm at each origin.</summary>
-        public static GameObject Arms(Team t)
+        /// <summary>
+        /// First-person arms for a hold (rifle, pistol, knife, grenade, c4; Tools/Blender/vexa_fparms.py): children
+        /// "RightArm" (origin = the weapon's grip origin) and, for two-handed holds, "LeftArm" (origin = the weapon's
+        /// "Support" point). Both arms share one texture set per faction.
+        /// </summary>
+        public static GameObject Arms(Team t, string hold)
         {
-            var go = Spawn("Models/Arms/" + Faction(t));
+            var go = Spawn($"Models/Arms/{Faction(t)}_{hold}");
             if (go == null) return null;
-            foreach (var side in new[] { "RightArm", "LeftArm" })
-            {
-                var part = FindDeep(go.transform, side);
-                if (part != null) Texture(part.gameObject, $"Models/Arms/Textures/{Faction(t)}_{side}");
-            }
+            Texture(go, $"Models/Arms/Textures/{Faction(t)}");
             return go;
         }
 

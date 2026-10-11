@@ -19,6 +19,7 @@ namespace Vexa.Client
         private Transform _rightArm, _leftArm, _muzzle, _support;
         private string _key;
         private Team _armsTeam = (Team)255;
+        private string _armsHold;
         private Vector2 _sway, _lastAngles;
         private float _bobPhase, _kick, _kickPitch, _deployT = 1f, _lastShotT;
         private bool _hasAngles;
@@ -43,6 +44,18 @@ namespace Vexa.Client
             _kick = Mathf.Min(_kick + 0.018f * strength, 0.06f);
             _kickPitch = Mathf.Min(_kickPitch + 2.2f * strength, 9f);
             _lastShotT = Time.time;
+        }
+
+        /// <summary>Which first-person arms pose (Tools/Blender/vexa_fparms.py HOLDS) the active item uses.</summary>
+        static string HoldFor(in PlayerState st)
+        {
+            switch (st.Active)
+            {
+                case WeaponSlotKind.Grenade: return "grenade";
+                case WeaponSlotKind.Bomb: return "c4";
+                case WeaponSlotKind.Melee: return "knife";
+                default: return st.ActiveDef.Category == WeaponCategory.Pistol ? "pistol" : "rifle";
+            }
         }
 
         static string KeyFor(in PlayerState st)
@@ -76,7 +89,8 @@ namespace Vexa.Client
 
             // ---- models ----
             var team = st.Team == Team.None ? Team.T : st.Team;
-            if (team != _armsTeam) BuildArms(team);
+            string hold = HoldFor(st);
+            if (team != _armsTeam || hold != _armsHold) BuildArms(team, hold);
             string key = KeyFor(st);
             if (key != _key) BuildWeapon(key, st);
 
@@ -88,7 +102,8 @@ namespace Vexa.Client
             Vector3 basePos = melee ? new Vector3(0.14f, -0.15f, 0.27f) : nade ? new Vector3(0.13f, -0.15f, 0.28f)
                             : st.Active == WeaponSlotKind.Bomb ? new Vector3(0.02f, -0.2f, 0.33f)
                             : pistol ? new Vector3(0.1f, -0.12f, 0.3f) : new Vector3(0.11f, -0.125f, 0.27f);
-            Quaternion baseRot = melee ? Quaternion.Euler(-20f, -12f, -35f) : Quaternion.identity;
+            // these offsets are the camera the arms were posed for (vexa_fparms.py HOLDS "view"): change both together
+            Quaternion baseRot = melee ? Quaternion.Euler(-18f, -19f, 0f) : Quaternion.identity;
 
             // sway: the gun lags behind the view a little
             var angles = new Vector2(s.Input.Yaw, s.Input.Pitch);
@@ -135,7 +150,7 @@ namespace Vexa.Client
             _root.localPosition = pos * Scale;
             _root.localRotation = rot;
             _root.localScale = Vector3.one * Scale;
-            PlaceArms(melee || nade || st.Active == WeaponSlotKind.Bomb);
+            PlaceArms();
         }
 
         void SetVisible(bool v)
@@ -145,11 +160,12 @@ namespace Vexa.Client
             if (_root != null) _root.gameObject.SetActive(v);
         }
 
-        void BuildArms(Team team)
+        void BuildArms(Team team, string hold)
         {
             if (_arms != null) Object.Destroy(_arms);
             _armsTeam = team;
-            _arms = ModelLibrary.Arms(team);
+            _armsHold = hold;
+            _arms = ModelLibrary.Arms(team, hold);
             if (_arms == null) return;
             _arms.transform.SetParent(_root, false);
             _rightArm = ModelLibrary.FindDeep(_arms.transform, "RightArm");
@@ -175,12 +191,13 @@ namespace Vexa.Client
             _deployT = 0;
         }
 
-        void PlaceArms(bool oneHanded)
+        void PlaceArms()
         {
             if (_rightArm != null) { _rightArm.position = _weaponPivot.position; _rightArm.rotation = _weaponPivot.rotation; }
             if (_leftArm != null)
             {
-                bool show = !oneHanded && _support != null;
+                // one-handed holds have no left arm in their model; two-handed ones need the weapon's support point
+                bool show = _support != null;
                 if (_leftArm.gameObject.activeSelf != show) _leftArm.gameObject.SetActive(show);
                 if (show) { _leftArm.position = _support.position; _leftArm.rotation = _weaponPivot.rotation; }
             }
@@ -198,7 +215,7 @@ namespace Vexa.Client
         public void Clear()
         {
             if (_root != null) Object.Destroy(_root.gameObject);
-            _root = null; _weapon = null; _arms = null; _key = null; _armsTeam = (Team)255;
+            _root = null; _weapon = null; _arms = null; _key = null; _armsTeam = (Team)255; _armsHold = null;
         }
     }
 }

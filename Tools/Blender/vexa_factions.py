@@ -144,11 +144,6 @@ def build(faction, shape=None):
     for i, p in enumerate(parts):
         a = p.data.attributes.new("layer", "INT", "POINT")
         a.data.foreach_set("value", np.full(len(p.data.vertices), i, dtype=np.int32))
-    # faces the first-person arms are cut from (sleeves, gloves, glove details)
-    for p in parts:
-        a = p.data.attributes.new("arm", "INT", "FACE")
-        if p.name.startswith(("Shirt", "Gloves", "RightKnuckle", "LeftKnuckle", "RightWrist", "LeftWrist")) or p is visible:
-            a.data.foreach_set("value", np.ones(len(p.data.polygons), dtype=np.int32))
     bpy.ops.object.select_all(action="DESELECT")
     for p in parts:
         p.select_set(True)

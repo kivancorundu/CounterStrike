@@ -73,7 +73,8 @@ Durum: ✅ bitti · 🔄 sürüyor · ⏳ sırada
   - Rig'li; 7 animasyonu var: bekleme, yürüme, koşma, eğilme, eğilerek yürüme, zıplama, ölüm. Ölçüler sunucu hitbox'larıyla uyumlu.
   - **Kıyafet fiziği:** anten, çanta, kılıf, kayış uçları ve bez yay benzetimiyle sallanır (mobilde de ucuz).
 - ✅ **Birinci şahıs:** silah ve eller.
-  - Kollar karakterin kendisinden kesilir: aynı kol, eldiven ve kavrama, 2K doku.
+  - Kollar ayrı üretilir (`Tools/Blender/vexa_fparms.py`): temiz MakeHuman kolu, eldiven ve kol (akıncıda sıvanmış ekose, muhafızda üniforma), 2K doku.
+  - Her tutuş kendi pozuyla gelir: tüfek (sol el ön tutamakta), tabanca (iki elle kavrama), bıçak (yumruk), bomba, C4. Kollar kameranın omuz konumundan IK ile çözülür.
   - Kod ile hareket: sallanma, yürüme salınımı, geri tepme, şarjör, çekme, inceleme, bomba hazırlama.
   - Duvarların içine girmez.
 - ✅ **Üçüncü şahıs:** animasyon karışımı ağ pozundan sürülüyor; nişan için üst gövde eğiliyor, silah elin kavrama noktasında.
