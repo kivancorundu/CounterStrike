@@ -126,6 +126,15 @@ namespace Vexa.Client
             if (s.Team != _team && s.Team != Team.None) Build(s.Team);
             transform.position = s.Position.ToU();
             transform.rotation = Quaternion.Euler(0, s.Yaw, 0);
+            if (!s.Alive && Mathf.Abs(s.Tumble) > 0.01f)
+            {
+                // a body thrown by the killing blow tumbles about its middle (ClientGame corpses)
+                var axis = Quaternion.Euler(0, s.TumbleYaw, 0) * Vector3.right;
+                var q = Quaternion.AngleAxis(s.Tumble, axis);
+                var pivot = Vector3.up * 0.9f;
+                transform.rotation = q * transform.rotation;
+                transform.position = s.Position.ToU() + pivot - q * pivot;
+            }
             _yaw = s.Yaw; _pitch = s.Pitch; _alive = s.Alive;
             float dt = Time.deltaTime;
 

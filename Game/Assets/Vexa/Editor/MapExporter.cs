@@ -10,7 +10,7 @@ namespace Vexa.EditorTools
     /// <summary>
     /// Exports the open scene's collision into StreamingAssets/Maps/&lt;scene&gt;.vxmap.
     /// Every non-trigger BoxCollider becomes a collision box (must be axis-aligned: only 90° Y rotations),
-    /// VexaSpawn objects become spawns and VexaZone objects become bomb sites / buy zones.
+    /// VexaSpawn objects become spawns, VexaZone objects become bomb sites / buy zones and VexaProp objects physics props.
     /// </summary>
     public static class MapExporter
     {
@@ -24,7 +24,7 @@ namespace Vexa.EditorTools
             foreach (var col in Object.FindObjectsOfType<BoxCollider>())
             {
                 if (!col.enabled || col.isTrigger) continue;
-                if (col.GetComponent<VexaZone>() != null) continue;
+                if (col.GetComponent<VexaZone>() != null || col.GetComponentInParent<VexaProp>() != null) continue;
                 var e = col.transform.rotation.eulerAngles;
                 bool aligned = Mathf.Abs(Mathf.DeltaAngle(e.x, 0)) < 0.01f && Mathf.Abs(Mathf.DeltaAngle(e.z, 0)) < 0.01f && Mathf.Abs(Mathf.DeltaAngle(e.y, Mathf.Round(e.y / 90f) * 90f)) < 0.01f;
                 if (!aligned)
@@ -54,6 +54,12 @@ namespace Vexa.EditorTools
                 var rect = new ZoneRect { Name = z.Kind == ZoneKind.BombSite ? z.SiteName : z.BuyTeam.ToString(), MinX = b.min.x, MinZ = b.min.z, MaxX = b.max.x, MaxZ = b.max.z };
                 if (z.Kind == ZoneKind.BombSite) map.Sites.Add(rect);
                 else map.BuyZones.Add((z.BuyTeam, rect));
+            }
+
+            foreach (var pr in Object.FindObjectsOfType<VexaProp>())
+            {
+                var p = pr.transform.position;
+                map.Props.Add(new MapProp { Kind = pr.Kind, Position = new System.Numerics.Vector3(p.x, p.y, p.z), Yaw = pr.transform.eulerAngles.y });
             }
 
             var dir = Path.Combine(Application.streamingAssetsPath, "Maps");

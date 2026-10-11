@@ -44,4 +44,18 @@ namespace Vexa.Client.Authoring
             Gizmos.DrawCube(c.bounds.center, c.bounds.size);
         }
     }
+
+    /// <summary>A movable physics prop (crate, barrel, red barrel). Place its pivot on the floor; Y rotation is its yaw.
+    /// Exported as a "prop" line; it is not part of the static collision.</summary>
+    public sealed class VexaProp : MonoBehaviour
+    {
+        public PropKind Kind = PropKind.Crate;
+
+        void OnDrawGizmos()
+        {
+            var h = Props.Get(Kind).Half;
+            Gizmos.color = Kind == PropKind.RedBarrel ? new Color(1f, 0.25f, 0.2f) : new Color(0.85f, 0.65f, 0.35f);
+            Gizmos.DrawWireCube(transform.position + Vector3.up * h.Y, new Vector3(h.X, h.Y, h.Z) * 2f);
+        }
+    }
 }

@@ -538,19 +538,33 @@ namespace Vexa.Core.Server
             SendAll(Delivery.ReliableOrdered);
             OnHit?.Invoke(he);
             victim.Bot?.OnDamaged(attacker);
-            if (victim.State.Health <= 0) OnDeath(victim, attacker, def, group == HitGroup.Head, wallbang, throughSmoke);
+            if (victim.State.Health <= 0)
+            {
+                // the body flies off with the killing blow (clients animate it: Corpse)
+                var force = _killForce;
+                if (force == Vector3.Zero && attacker != null && attacker != victim)
+                {
+                    var d = point - attacker.State.EyePosition;
+                    if (d.LengthSquared() > 1e-4f) force = Vector3.Normalize(d) * MathF.Min(10f, 2.5f + health * 0.05f) + new Vector3(0, 1.5f, 0);
+                }
+                OnDeath(victim, attacker, def, group == HitGroup.Head, wallbang, throughSmoke, force + victim.State.Velocity);
+            }
         }
 
-        private void OnDeath(Player victim, Player attacker, WeaponDef def, bool headshot, bool wallbang, bool throughSmoke = false)
+        /// <summary>Set around ApplyDamage by explosions: the push their kills get.</summary>
+        private Vector3 _killForce;
+
+        private void OnDeath(Player victim, Player attacker, WeaponDef def, bool headshot, bool wallbang, bool throughSmoke = false, Vector3 force = default)
         {
             victim.State.Alive = false;
             victim.State.Health = 0;
             victim.State.Planting = false; victim.State.Defusing = false;
             var weapon = def?.Id ?? WeaponId.None;
-            var ke = new KillEvent { Killer = attacker?.Id ?? 0, Victim = victim.Id, Weapon = weapon, Headshot = headshot, Wallbang = wallbang, ThroughSmoke = throughSmoke, AttackerBlind = attacker != null && attacker.State.IsBlind(attacker.PlayerTime(Dt)), Grenade = _killGrenade };
+            var ke = new KillEvent { Killer = attacker?.Id ?? 0, Victim = victim.Id, Weapon = weapon, Headshot = headshot, Wallbang = wallbang, ThroughSmoke = throughSmoke, AttackerBlind = attacker != null && attacker.State.IsBlind(attacker.PlayerTime(Dt)), Grenade = _killGrenade, Force = force };
             _w.Reset(); _w.Byte((byte)Msg.Kill); _w.Byte((byte)ke.Killer); _w.Byte((byte)ke.Victim); _w.Byte((byte)ke.Weapon);
             _w.Byte((byte)((ke.Headshot ? 1 : 0) | (ke.Wallbang ? 2 : 0) | (ke.ThroughSmoke ? 4 : 0) | (ke.AttackerBlind ? 8 : 0)));
             _w.Byte((byte)ke.Grenade);
+            _w.Vec3(ke.Force);
             SendAll(Delivery.ReliableOrdered);
             OnKill?.Invoke(ke);
             Info($"{attacker?.Name ?? "world"} [{def?.Name ?? "-"}{(headshot ? " HS" : "")}{(wallbang ? " WB" : "")}] {victim.Name}");

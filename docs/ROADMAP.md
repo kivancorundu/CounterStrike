@@ -33,6 +33,13 @@ Durum: ✅ bitti · 🔄 sürüyor · ⏳ sırada
 - ✅ **Rekabetçi harita "Kasaba":** iki bomba bölgesi, satın alma bölgeleri, 5'e 5 doğma noktaları.
 - ✅ **49 otomatik test**; tam bot maçı Kasaba'da sonuna kadar oynanıyor.
 
+## Faz 1.5 — Eğlence fiziği ✅
+- ✅ Kendi fizik motorumuz (Unity fiziği yok): insan kulesi (5 kişi üst üste), taşınma, boost zıplama.
+- ✅ HE ve kırmızı varil patlamaları oyuncuları ve eşyaları savurur (rocket jump).
+- ✅ İtilebilen, tırmanılabilen, üst üste konabilen kasa ve variller; vurulunca patlayan kırmızı variller (zincirleme).
+- ✅ Öldürücü darbeyle havada dönerek uçan cesetler.
+- ✅ kasaba ve training haritalarına eşyalar yerleştirildi (training: kasa piramidi, varil kümesi).
+
 ## Faz 2 — Görseller: silahlar ve karakterler 🔄
 
 - ✅ **İki detay seviyesi:**

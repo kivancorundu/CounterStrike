@@ -93,10 +93,12 @@ namespace Vexa.Core.Net
         public short Health, Armor;
         public bool HasC4, Planting, Defusing, HasKit, Helmet;
         public GrenadeType Grenade;
+        // client only: a thrown body's tumble (degrees) and the heading it flies along
+        public float Tumble, TumbleYaw;
     }
 
     public struct HitEvent { public int Attacker, Victim; public HitGroup Group; public Vector3 Point; public int Damage; public int VictimHealth; }
-    public struct KillEvent { public int Killer, Victim; public WeaponId Weapon; public bool Headshot, Wallbang, ThroughSmoke, AttackerBlind; public GrenadeType Grenade; }
+    public struct KillEvent { public int Killer, Victim; public WeaponId Weapon; public bool Headshot, Wallbang, ThroughSmoke, AttackerBlind; public GrenadeType Grenade; public Vector3 Force; }
 
     /// <summary>Wire encoding for every message. Shared by client and server.</summary>
     public static class Protocol

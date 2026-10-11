@@ -104,7 +104,7 @@ Demo izlerken: Boşluk duraklat, ↑/↓ hız, PgUp/PgDn raund, ←/→ oyuncu, 
 
 ## Durum
 
-Mevcut kilometre taşı: rekabetçi oynanış, arayüz, gerçekçi karakterler (4K doku, kıyafet fiziği) ve detaylı silah modelleri, sohbet, izleyici, demo ve turnuva modu. Sırada: rally.gg API entegrasyonu (API bilgisi bekleniyor), haritaların sanat geçişi ve ses paketi.
+Mevcut kilometre taşı: eğlence fiziği (insan kulesi, boost, patlama itmesi, itilebilen/patlayan eşyalar, uçan cesetler), rekabetçi oynanış, arayüz, gerçekçi karakterler (4K doku, kıyafet fiziği) ve detaylı silah modelleri, sohbet, izleyici, demo ve turnuva modu. Sırada: rally.gg API entegrasyonu (API bilgisi bekleniyor), haritaların sanat geçişi ve ses paketi.
 
 ![Silahlar](docs/images/weapons.jpg)
 ![Karakterler](docs/images/characters.jpg) Ayrıntılar için [docs/ROADMAP.md](docs/ROADMAP.md) ve [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

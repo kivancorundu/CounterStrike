@@ -48,6 +48,8 @@ namespace Vexa.Core.Client
         private readonly SimContext _replayCtx;
         private readonly Dictionary<int, Remote> _remotes = new Dictionary<int, Remote>();
         private readonly Dictionary<int, PropView> _props = new Dictionary<int, PropView>();
+        private readonly Dictionary<int, Corpse> _corpses = new Dictionary<int, Corpse>();
+        private readonly List<int> _corpseIds = new List<int>();
         public IEnumerable<PropView> Props => _props.Values;
         private double _acc;
         private int _lastAck = -1;
@@ -191,6 +193,7 @@ namespace Vexa.Core.Client
             _wasAlive = Predicted.Alive;
             float decay = (float)Math.Exp(-realDt * 15.0);
             CorrectionOffset *= decay;
+            StepCorpses((float)realDt);
         }
 
         private void RunTick(PlayerInput cmd)
@@ -377,6 +380,8 @@ namespace Vexa.Core.Client
                         byte kf = _r.Byte();
                         k.Headshot = (kf & 1) != 0; k.Wallbang = (kf & 2) != 0; k.ThroughSmoke = (kf & 4) != 0; k.AttackerBlind = (kf & 8) != 0;
                         k.Grenade = (GrenadeType)_r.Byte();
+                        k.Force = _r.Vec3();
+                        StartCorpse(k);
                         Killed?.Invoke(k);
                         break;
                     }
@@ -477,6 +482,26 @@ namespace Vexa.Core.Client
             CorrectionOffset = delta.Length() < 1.0f ? CorrectionOffset + delta : Vector3.Zero;
         }
 
+        private void StartCorpse(in KillEvent k)
+        {
+            if (World == null || !_remotes.ContainsKey(k.Victim) || !TryGetRemotePose(k.Victim, out var pose)) return;
+            _corpses[k.Victim] = CorpsePhysics.Start(pose.Position, k.Force);
+        }
+
+        private void StepCorpses(float dt)
+        {
+            if (_corpses.Count == 0 || World == null) return;
+            dt = Math.Min(dt, 0.05f);
+            _corpseIds.Clear();
+            _corpseIds.AddRange(_corpses.Keys);
+            foreach (int id in _corpseIds)
+            {
+                var c = _corpses[id];
+                CorpsePhysics.Step(ref c, dt, World);
+                _corpses[id] = c;
+            }
+        }
+
         /// <summary>A remote player standing on the local player's head doesn't block it (the server lifts riders).</summary>
         private bool RidesLocal(in RemoteState r)
         {
@@ -512,6 +537,23 @@ namespace Vexa.Core.Client
 
         /// <summary>Interpolated state of another player at the current render time.</summary>
         public bool TryGetRemotePose(int id, out RemoteState pose)
+        {
+            if (!TryGetRemotePoseRaw(id, out pose)) return false;
+            if (_corpses.TryGetValue(id, out var c))
+            {
+                // the kill message can arrive before the interpolated pose shows the death; later, alive = respawned
+                if (pose.Alive) { if (c.Age > 1f) _corpses.Remove(id); }
+                else
+                {
+                    pose.Position = c.Position;
+                    pose.Velocity = Vector3.Zero;
+                    pose.Tumble = c.Angle; pose.TumbleYaw = c.FlightYaw;
+                }
+            }
+            return true;
+        }
+
+        private bool TryGetRemotePoseRaw(int id, out RemoteState pose)
         {
             pose = default;
             if (!_remotes.TryGetValue(id, out var rm) || rm.Snaps.Count == 0) return false;

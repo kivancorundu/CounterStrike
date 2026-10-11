@@ -20,6 +20,9 @@ namespace Vexa.Client
         private readonly Dictionary<int, Smoke> _smokes = new Dictionary<int, Smoke>();
         private readonly Dictionary<int, Fire> _fires = new Dictionary<int, Fire>();
         private readonly Dictionary<int, GameObject> _items = new Dictionary<int, GameObject>();
+        private readonly Dictionary<int, GameObject> _props = new Dictionary<int, GameObject>();
+        private readonly Dictionary<int, Light> _propFires = new Dictionary<int, Light>();
+        private static Material _crateMat, _barrelMat, _redBarrelMat;
         private GameObject _bomb;
         private Light _bombLight;
         private Renderer _bombLed;
@@ -173,6 +176,46 @@ namespace Vexa.Client
             }
             Sweep(_items, go => Object.Destroy(go));
 
+            // ---- physics props (crates, barrels) ----
+            _seen.Clear();
+            foreach (var pv in c.Props)
+            {
+                _seen.Add(pv.Id);
+                if (!_props.TryGetValue(pv.Id, out var go)) _props[pv.Id] = go = MakeProp(pv.Kind);
+                bool visible = !pv.Destroyed;
+                if (go.activeSelf != visible) go.SetActive(visible);
+                if (!visible) continue;
+                if (c.TryGetPropPose(pv.Id, out var pos, out float yaw, out _))
+                {
+                    go.transform.position = pos.ToU();
+                    go.transform.rotation = Quaternion.Euler(0, yaw, 0);
+                }
+                // a red barrel that took enough hits burns for a moment before it blows
+                _propFires.TryGetValue(pv.Id, out var fire);
+                if (pv.Burning && fire == null)
+                {
+                    if (_flameMat == null) _flameMat = Unlit(new Color(1f, 0.55f, 0.12f));
+                    var flame = Prim(PrimitiveType.Sphere, go.transform, _flameMat, "Flame");
+                    flame.transform.localPosition = new Vector3(0, 0.5f, 0);
+                    flame.transform.localScale = new Vector3(0.25f, 0.4f, 0.25f);
+                    var l = new GameObject("FireLight").AddComponent<Light>();
+                    l.transform.SetParent(go.transform, false);
+                    l.transform.localPosition = new Vector3(0, 0.8f, 0);
+                    l.type = LightType.Point; l.range = 5f; l.color = new Color(1f, 0.6f, 0.25f);
+                    _propFires[pv.Id] = fire = l;
+                }
+                else if (!pv.Burning && fire != null)
+                {
+                    var f = fire.transform.parent.Find("Flame");
+                    if (f != null) Object.Destroy(f.gameObject);
+                    Object.Destroy(fire.gameObject);
+                    _propFires.Remove(pv.Id);
+                    fire = null;
+                }
+                if (fire != null) fire.intensity = 2.5f + Mathf.PerlinNoise(Time.time * 12f, pv.Id) * 2f;
+            }
+            Sweep(_props, go => Object.Destroy(go));
+
             // ---- bomb ----
             var b = c.Bomb;
             bool show = b.State == BombState.Planted || b.State == BombState.Dropped;
@@ -192,6 +235,27 @@ namespace Vexa.Client
                     _bombLight.intensity = on ? 1.6f : 0f;
                 }
             }
+        }
+
+        static GameObject MakeProp(PropKind kind)
+        {
+            var go = Art.ModelLibrary.Prop(kind);
+            if (go != null) return go;
+            // placeholder until the models are imported
+            var h = Vexa.Core.Props.Get(kind).Half;
+            bool drum = kind == PropKind.Barrel || kind == PropKind.RedBarrel;
+            if (_crateMat == null)
+            {
+                _crateMat = MapBuilder.MakeMaterial(new Color(0.45f, 0.3f, 0.15f));
+                _barrelMat = MapBuilder.MakeMaterial(new Color(0.18f, 0.26f, 0.32f));
+                _redBarrelMat = MapBuilder.MakeMaterial(new Color(0.6f, 0.08f, 0.06f));
+            }
+            var root = new GameObject("Prop_" + kind);
+            var body = Prim(drum ? PrimitiveType.Cylinder : PrimitiveType.Cube, root.transform,
+                kind == PropKind.RedBarrel ? _redBarrelMat : drum ? _barrelMat : _crateMat, "Body");
+            body.transform.localScale = drum ? new Vector3(h.X * 2, h.Y, h.Z * 2) : new Vector3(h.X * 2, h.Y * 2, h.Z * 2);
+            body.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+            return root;
         }
 
         void Sweep<T>(Dictionary<int, T> map, System.Action<T> destroy)

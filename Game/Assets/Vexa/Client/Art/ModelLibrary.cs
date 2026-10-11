@@ -108,6 +108,15 @@ namespace Vexa.Client.Art
             return go;
         }
 
+        /// <summary>Physics prop model (crate, smallcrate, barrel, redbarrel; Tools/Blender/vexa_props.py), origin at its center.</summary>
+        public static GameObject Prop(PropKind k)
+        {
+            string key = Vexa.Core.Props.NameOf(k);
+            var go = Spawn(Folder("Props", true) + key);
+            if (go != null) Texture(go, Folder("Props", true) + "Textures/" + key);
+            return go;
+        }
+
         public static string Faction(Team t) => t == Team.CT ? "muhafiz" : "akinci";
 
         public static GameObject Character(Team t)

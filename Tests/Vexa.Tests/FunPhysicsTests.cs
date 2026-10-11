@@ -243,5 +243,35 @@ namespace Vexa.Tests
             Assert.True(near.State.Health < 100 || !near.State.Alive, "the blast hurts players nearby");
             Assert.True(crate.Velocity.LengthSquared() > 0.5f || crate.Position.X > 2.3f, "and throws the crate");
         }
+        [Theory]
+        [InlineData("kasaba")]
+        [InlineData("training")]
+        public void MapPropsStartAtRestInFreeSpace(string name)
+        {
+            var map = LoadMap(name);
+            Assert.NotEmpty(map.Props);
+            var w = map.BuildCollision();
+            var pw = new PropWorld();
+            foreach (var mp in map.Props) pw.Add(mp.Kind, mp.Position, mp.Yaw);
+            foreach (var p in pw.Props) { Assert.False(w.OverlapBox(p.Position, p.Half - new Vector3(0.01f)), $"prop {p.Id} inside a wall"); pw.Wake(p); }
+            for (int t = 0; t < 64 * 3; t++) pw.Step(Dt, w, null);
+            foreach (var p in pw.Props)
+            {
+                Assert.True(p.Asleep, $"prop {p.Id} still moving");
+                Assert.True(Vector3.Distance(p.Position, p.Home) < 0.05f, $"prop {p.Id} ({p.Kind}) moved {Vector3.Distance(p.Position, p.Home):0.00} m");
+            }
+        }
+        [Fact]
+        public void BodiesFlyTumbleAndComeToRest()
+        {
+            var w = Flat((new Vector3(-10, 0, 6), new Vector3(10, 3, 7)));   // a wall 6 m ahead
+            var c = Vexa.Core.Client.CorpsePhysics.Start(Vector3.Zero, new Vector3(0, 3f, 9f));
+            float maxAngle = 0;
+            for (int t = 0; t < 64 * 4; t++) { Vexa.Core.Client.CorpsePhysics.Step(ref c, Dt, w); maxAngle = MathF.Max(maxAngle, MathF.Abs(c.Angle)); }
+            Assert.True(c.Resting, "the body settles");
+            Assert.InRange(c.Position.Z, 1.5f, 6f - 0.27f);   // thrown, stopped by the wall
+            Assert.InRange(c.Position.Y, -0.01f, 0.05f);
+            Assert.True(maxAngle > 90f, "it tumbled in the air");
+        }
     }
 }

@@ -42,3 +42,23 @@ spawn DM 20 0 0 -90
 site A 8 8 24 24
 buyzone T -25 15 -5 25
 buyzone CT 5 -25 25 -15
+
+# physics props (Core/Physics/Props.cs)
+prop crate -14.5 0 10 0
+prop crate -13.55 0 10 0
+prop crate -12.6 0 10 0
+prop crate -14.05 0.9 10 5
+prop crate -13.1 0.9 10 -5
+prop crate -13.6 1.8 10 10
+prop redbarrel 12 0 -10 0
+prop redbarrel 12.7 0 -10.4 0
+prop redbarrel 12.3 0 -11.1 0
+prop barrel 13.4 0 -10.9 0
+prop barrel 11.4 0 -10.6 0
+prop smallcrate 2 0 -6 15
+prop smallcrate 2.7 0 -6.2 40
+prop smallcrate 2.3 0.6 -6 0
+prop crate -8 0 -8 0
+prop crate -8 0.9 -8 15
+prop barrel 6 0 12 0
+prop redbarrel -2 0 6 0

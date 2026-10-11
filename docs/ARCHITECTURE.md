@@ -81,6 +81,19 @@ Bakış açıları sunucuyla bit-bit aynı olsun diye istemci, açıları önce 
 
 **7. Dağılımın tohumlanması:** Merminin dağılım (spread) yönleri, oyuncu ve atış sayacından üretilen bir tohumla hesaplanır. Bu sayede istemcinin çizdiği mermi izi ve duvar delikleri sunucunun gerçek mermileriyle aynı yerde olur.
 
+## Eğlence fiziği (kendi motorumuz)
+
+Oyun Unity'nin fizik motorunu kullanmaz. Çarpışma ve hareket `Core/Physics` + `Core/Sim` içinde, sunucu ve istemcide birebir aynı çalışan C# kodudur. Öncelik gerçekçilik değil eğlence:
+- **İnsan kulesi:** Oyuncular birbirinin kafasına çıkabilir. Üstteki, alttakinin hareketiyle taşınır (`PlayerState.GroundKind/GroundOwner`, `BaseVelocity` kule boyunca yukarı aktarılır); 5 kişilik kule birlikte yürür.
+  - Alttaki oyuncu üstündekileri engel saymaz: ayağa kalkabilir, zıplayabilir. `StackSolver` sunucuda her tick üstekileri tekrar tepeye oturtur.
+  - Hızla yükselen bir taşıyıcı (zıplama, patlama) üstündekini fırlatır (**boost**, 1.35×).
+- **Patlama itmesi** (`Knockback`): HE bombası ve kırmızı varil oyuncuları ve eşyaları savurur (bomba ile "rocket jump"). `MatchConfig.FunPhysics` ile kapatılabilir.
+- **Eşyalar** (`PropWorld`): kasa, küçük kasa, varil, kırmızı varil. Yerçekimi, sürtünme, sekme, eşyalar arası momentum aktarımı, uyku. Haritada `prop <tür> x y z yaw` satırıyla yerleştirilir, her raunt başında yerine döner.
+  - Oyuncu yürüyerek iter, üstüne çıkar, üst üste dizer; kayan kasanın üstündeki oyuncu kasayla taşınır.
+  - Mermiler eşyaları iter ve kırmızı varili ateşler (zincirleme patlama); bombalar eşyalardan seker; hızlı uçan eşya çarptığı oyuncuya hasar verir.
+  - Snapshot'larda son hareket eden eşyalar her tick, diğerleri sırayla gönderilir; istemci aradeğer alır ve tahminde engel olarak kullanır.
+- **Uçan cesetler** (`Client/Corpse`): Öldürücü darbenin kuvveti `KillEvent.Force` ile gelir; ceset havada dönerek uçar, duvardan seker, kayarak durur. Sadece görseldir.
+
 ## Hile koruması (sunucu otoritesi)
 
 - **Konum, isabet, hasar, mermi ve ateş hızı tamamen sunucuda.** İstemci sadece tuş ve açı gönderir.

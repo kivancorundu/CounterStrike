@@ -117,8 +117,10 @@ namespace Vexa.Core.Server
                     float raw = maxDamage * (1f - d / radius);
                     var r = DamageModel.ApplyArmor(raw, 0.5f, HitGroup.Chest, p.State.Armor, p.State.Helmet);
                     _killGrenade = kind;
+                    _killForce = Knockback.Explosion(c, chest, radius, strength * 1.3f);
                     ApplyDamage(owner != null && _players.Contains(owner) ? owner : null, p, def, HitGroup.Chest, r.Health, r.Armor, false, chest);
                     _killGrenade = GrenadeType.None;
+                    _killForce = Vector3.Zero;
                 }
                 if (FunPhysics) Knockback.Apply(ref p.State, Knockback.Explosion(c, chest, radius, strength));
             }

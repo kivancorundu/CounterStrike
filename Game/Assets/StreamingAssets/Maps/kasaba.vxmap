@@ -321,3 +321,29 @@ site A -43.891 -48.768 -24.384 -29.261
 site B 19.507 -48.768 42.266 -19.507
 buyzone T -27.635 30.886 17.882 47.142
 buyzone CT -8.128 -48.768 9.754 -34.138
+
+# physics props (Core/Physics/Props.cs)
+prop crate -15 1.422 36 0
+prop crate -15 2.322 36 20
+prop smallcrate -14.2 1.422 36.3 35
+prop barrel 10.5 0 44.5 0
+prop redbarrel 11.3 0 45.2 0
+prop barrel 10.6 0 45.4 0
+prop crate 1.8 0 4.5 10
+prop crate -29.5 0 -44.5 15
+prop crate -29.5 0.9 -44.5 -10
+prop redbarrel -42 0 -31 0
+prop smallcrate -31 0 -44.4 30
+prop crate 23.5 0 -22.5 0
+prop smallcrate 24.6 0 -23 20
+prop redbarrel 40.5 0 -29.5 0
+prop barrel 40 0 -30.5 0
+prop barrel 8.5 0 -36.5 0
+prop redbarrel -6.5 0 -47 0
+prop crate 31 0 20.5 0
+prop crate 32 0 20.5 5
+prop crate 31.5 0.9 20.5 0
+prop redbarrel 15 0 29.5 0
+prop barrel -37.5 0 -5 0
+prop redbarrel -37.4 0 -6 0
+prop crate -2.5 0 18 0
