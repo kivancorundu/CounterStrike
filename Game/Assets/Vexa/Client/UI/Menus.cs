@@ -202,7 +202,10 @@ namespace Vexa.Client.UI
         public PlayPage()
         {
             this.Fill();
-            var main = U.Col(28).Abs(64, 40, 520);
+            var mainScroll = U.Scroll().Abs(0, 0, 520, 0);
+            mainScroll.contentContainer.style.paddingLeft = 64; mainScroll.contentContainer.style.paddingRight = 64;
+            mainScroll.contentContainer.style.paddingTop = 40; mainScroll.contentContainer.style.paddingBottom = 40;
+            var main = U.Col(28);
 
             var modeSec = U.Col(12);
             modeSec.Add(U.Eyebrow("01 · OYUN MODU"));
@@ -211,7 +214,7 @@ namespace Vexa.Client.UI
             {
                 int k = i;
                 var m = Modes[i];
-                var card = U.Col(4).Grow().W(0).H(176).Pad(20).OnClick(() => PickMode(k));
+                var card = U.Col(4).Grow().W(0).MinH(176).Pad(20).OnClick(() => PickMode(k));
                 card.Kids(U.Head(m.tag, 14, null, Fonts.DisplayBold, 3), U.Head(m.name, 34, null, Fonts.Display, 1));
                 var d = U.Text(m.desc, 14, Fonts.Body);
                 d.style.whiteSpace = WhiteSpace.Normal;
@@ -228,7 +231,7 @@ namespace Vexa.Client.UI
             for (int i = 0; i < Maps.Length; i++)
             {
                 int k = i;
-                var card = U.Col(2).Grow().W(0).H(140).Pad(20, 22).Justify(Justify.FlexEnd).OnClick(() => PickMap(k));
+                var card = U.Col(2).Grow().W(0).MinH(140).Pad(20, 22).Justify(Justify.FlexEnd).OnClick(() => PickMap(k));
                 card.Kids(U.Head(Maps[i].name, 40), U.Text(Maps[i].desc, 14, Fonts.Body, Theme.Muted));
                 _mapCards.Add(card);
                 mapRow.Kids(card);
@@ -258,10 +261,15 @@ namespace Vexa.Client.UI
             _dmBotsRow.Kids(U.Eyebrow("05 · BOT SAYISI"), _dmBots);
 
             main.Kids(modeSec, mapSec, opts, _teamSizeRow, _dmBotsRow);
-            hierarchy.Add(main);
+            mainScroll.Add(main);
+            hierarchy.Add(mainScroll);
 
             // ---- summary panel ----
-            var side = U.Col(18).Abs(null, 0, 0, 0).W(456).Bg(Theme.Ink2).BorderLeft(1, Theme.Line).Pad(40);
+            var panel = U.Col().Abs(null, 0, 0, 0).W(456).Bg(Theme.Ink2).BorderLeft(1, Theme.Line);
+            var sideScroll = U.Scroll();
+            panel.Add(sideScroll);
+            var side = U.Col(18).Pad(40);
+            sideScroll.Add(side);
             side.Add(U.Eyebrow("MAÇ ÖZETİ"));
             var sumTitle = U.Col();
             _sumMode = U.Head("", 56, null, Fonts.Display);
@@ -275,9 +283,8 @@ namespace Vexa.Client.UI
             _tick.Changed += v => { VexaSettings.LastTick = v == 1 ? 128 : 64; VexaSettings.Save(); };
             tickRow.Kids(U.Text("Sunucu", 15, Fonts.Body, Theme.Muted).W(70), _tick);
             side.Add(tickRow);
-            side.Add(U.Spacer());
             var start = new UButton("MAÇI BAŞLAT", ButtonStyle.Primary, Start, 34);
-            start.H(80);
+            start.H(80).Margin(12, 0, 0, 0);
             side.Add(start);
             var join = U.Col(10).BorderTop(1, Theme.Line).Pad(18, 0, 0, 0);
             join.Add(U.Head("SUNUCUYA KATIL", 15, Theme.Muted, Fonts.DisplayBold, 3));
@@ -287,8 +294,9 @@ namespace Vexa.Client.UI
             _port = new UInput("Port", VexaSettings.LastPort.ToString(), 5, 96);
             jr.Kids(_host, _port, new UButton("BAĞLAN", ButtonStyle.Secondary, Join).H(42));
             join.Add(jr);
+            join.Add(U.Text("Sadece çalışan bir VEXA sunucusuna bağlanır. Botlarla oynamak için MAÇI BAŞLAT.", 13, Fonts.Body, Theme.Dim).Wrap2());
             side.Add(join);
-            hierarchy.Add(side);
+            hierarchy.Add(panel);
 
             _mode = Mathf.Clamp(VexaSettings.LastMode, 0, Modes.Length - 1);
             _map = Mathf.Clamp(VexaSettings.LastMap, 0, Maps.Length - 1);

@@ -59,14 +59,32 @@ namespace Vexa.Client.UI
     public static class U
     {
         // ---------- creation ----------
-        public static VisualElement Box(string name = null) => new VisualElement { name = name, pickingMode = PickingMode.Ignore };
-        public static VisualElement Row(float gap = 0) => new VisualElement { pickingMode = PickingMode.Ignore }.Dir(FlexDirection.Row).Gap(gap);
-        public static VisualElement Col(float gap = 0) => new VisualElement { pickingMode = PickingMode.Ignore }.Dir(FlexDirection.Column).Gap(gap);
+        // Nothing shrinks below its content by default (UI Toolkit's default flex-shrink 1 squeezes blocks of text
+        // on top of each other when space runs short); elements that should flex use Grow().
+        static VisualElement New(string name = null)
+        {
+            var e = new VisualElement { name = name, pickingMode = PickingMode.Ignore };
+            e.style.flexShrink = 0;
+            return e;
+        }
+        public static VisualElement Box(string name = null) => New(name);
+        public static VisualElement Row(float gap = 0) => New().Dir(FlexDirection.Row).Gap(gap);
+        public static VisualElement Col(float gap = 0) => New().Dir(FlexDirection.Column).Gap(gap);
+
+        /// <summary>Vertical scroll area (for panels whose content can be taller than the screen).</summary>
+        public static ScrollView Scroll()
+        {
+            var s = new ScrollView(ScrollViewMode.Vertical) { horizontalScrollerVisibility = ScrollerVisibility.Hidden, verticalScrollerVisibility = ScrollerVisibility.Auto };
+            s.style.flexGrow = 1;
+            s.style.flexShrink = 1;
+            return s;
+        }
         public static VisualElement Spacer() { var s = Box(); s.style.flexGrow = 1; return s; }
 
         public static Label Text(string s, float size, Font font = null, Color? color = null)
         {
             var l = new Label(s) { pickingMode = PickingMode.Ignore };
+            l.style.flexShrink = 0;
             l.style.fontSize = size;
             l.style.color = color ?? Theme.Text;
             l.style.unityFontDefinition = FontDefinition.FromFont(font ?? Fonts.Body);
@@ -94,6 +112,8 @@ namespace Vexa.Client.UI
         public static T Justify<T>(this T e, Justify j) where T : VisualElement { e.style.justifyContent = j; return e; }
         public static T Self<T>(this T e, Align a) where T : VisualElement { e.style.alignSelf = a; return e; }
         public static T Wrap<T>(this T e) where T : VisualElement { e.style.flexWrap = UnityEngine.UIElements.Wrap.Wrap; return e; }
+        /// <summary>Label text wraps onto several lines.</summary>
+        public static Label Wrap2(this Label l) { l.style.whiteSpace = WhiteSpace.Normal; return l; }
 
         /// <summary>
         /// UI Toolkit has no CSS gap: emulate it with a margin on every child but the first. Children added with
@@ -145,6 +165,8 @@ namespace Vexa.Client.UI
         public static T Size<T>(this T e, float w, float h) where T : VisualElement { if (w >= 0) e.style.width = w; if (h >= 0) e.style.height = h; return e; }
         public static T W<T>(this T e, float w) where T : VisualElement { e.style.width = w; return e; }
         public static T H<T>(this T e, float h) where T : VisualElement { e.style.height = h; return e; }
+        /// <summary>At least this tall, taller if the content needs it (cards with wrapping text).</summary>
+        public static T MinH<T>(this T e, float h) where T : VisualElement { e.style.minHeight = h; return e; }
         public static T WPct<T>(this T e, float pct) where T : VisualElement { e.style.width = new Length(pct, LengthUnit.Percent); return e; }
         public static T HPct<T>(this T e, float pct) where T : VisualElement { e.style.height = new Length(pct, LengthUnit.Percent); return e; }
         public static T MinW<T>(this T e, float w) where T : VisualElement { e.style.minWidth = w; return e; }
