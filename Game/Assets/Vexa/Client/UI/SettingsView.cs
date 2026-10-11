@@ -209,7 +209,7 @@ namespace Vexa.Client.UI
         {
             var p = U.Col(16).W(640);
             p.Add(U.Eyebrow("GÖRÜNTÜ KALİTESİ"));
-            int q = VexaSettings.Quality < 0 ? (Application.isMobilePlatform ? 1 : 2) : VexaSettings.Quality;
+            int q = VexaSettings.Quality < 0 ? (int)GraphicsQuality.Current : VexaSettings.Quality;
             var quality = new Segmented(VexaSettings.QualityNames, q);
             quality.Changed += v => { VexaSettings.Quality = v; Changed(); };
             p.Add(quality);

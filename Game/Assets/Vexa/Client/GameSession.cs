@@ -105,6 +105,8 @@ namespace Vexa.Client
                     int bots = setup.Mode == GameMode.Deathmatch ? setup.DeathmatchBots : 0;
                     for (int i = 0; i < bots; i++) s.HostServer.AddBot(BotName(i));
                 }
+                // bot navigation is built here, while the loading screen is up, not as a hitch when the match starts
+                if (config.FillBots || s.HostServer.Players.Count > 0) _ = s.HostServer.Nav;
                 s.Connect("127.0.0.1", setup.Port, setup.PlayerName);
                 if (UI.VexaSettings.RecordDemos)
                 {

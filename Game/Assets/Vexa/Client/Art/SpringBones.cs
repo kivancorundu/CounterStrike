@@ -23,11 +23,13 @@ namespace Vexa.Client.Art
 
         const float BoneLength = 0.15f;
         readonly List<Spring> _springs = new List<Spring>();
+        Renderer[] _renderers;
 
         public static SpringBones Attach(GameObject model)
         {
             if (!model.TryGetComponent<SpringBones>(out var sb)) sb = model.AddComponent<SpringBones>();
             sb.Collect(model.transform);
+            sb._renderers = model.GetComponentsInChildren<Renderer>();
             return sb;
         }
 
@@ -49,6 +51,13 @@ namespace Vexa.Client.Art
             return new Spring { T = t, RestLocal = t.localRotation, Stiffness = stiff, Drag = drag, Gravity = grav };
         }
 
+        bool Visible()
+        {
+            if (_renderers == null) return true;
+            foreach (var r in _renderers) if (r != null && r.isVisible) return true;
+            return false;
+        }
+
         void OnEnable()
         {
             foreach (var s in _springs) s.Started = false;
@@ -57,7 +66,7 @@ namespace Vexa.Client.Art
         void LateUpdate()
         {
             float dt = Mathf.Min(Time.deltaTime, 1f / 30f);
-            if (dt <= 0f) return;
+            if (dt <= 0f || !Visible()) return;
             // frame-rate independent stiffness / drag (tuned at 60 fps)
             float f = dt * 60f;
             foreach (var s in _springs)

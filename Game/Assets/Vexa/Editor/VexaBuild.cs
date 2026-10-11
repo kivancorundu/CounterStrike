@@ -133,6 +133,8 @@ namespace Vexa.EditorTools
             MakeRef("Unlit", "Universal Render Pipeline/Unlit", new string[0], false);
             MakeRef("UnlitTransparent", "Universal Render Pipeline/Unlit", new[] { "_SURFACE_TYPE_TRANSPARENT" }, true);
             MakeRef("Sprites", "Sprites/Default", new string[0], false);
+            // MapBuilder on the DÜŞÜK preset
+            MakeRef("SimpleLit", "Universal Render Pipeline/Simple Lit", new string[0], false);
         }
 
         static void MakeRef(string name, string shaderName, string[] keywords, bool transparent)

@@ -170,11 +170,14 @@ namespace Vexa.Client.UI
 
         public static void Apply()
         {
-            int levels = QualitySettings.names.Length;
-            if (Quality >= 0 && levels > 0 && Quality != _appliedQuality)
+            if (Quality != _appliedQuality)
             {
                 _appliedQuality = Quality;
-                QualitySettings.SetQualityLevel(Mathf.Clamp(Mathf.RoundToInt(Quality / 3f * (levels - 1)), 0, levels - 1), true);
+                // the project's quality level first, then the preset's own settings on top (see GraphicsQuality)
+                int levels = QualitySettings.names.Length;
+                int q = Quality >= 0 ? Quality : (int)GraphicsQuality.Detect();
+                if (levels > 0) QualitySettings.SetQualityLevel(Mathf.Clamp(Mathf.RoundToInt(q / 3f * (levels - 1)), 0, levels - 1), true);
+                GraphicsQuality.Apply(Quality);
             }
             if (Application.isMobilePlatform) Application.targetFrameRate = FpsCap > 0 ? FpsCap : 60;
             else Application.targetFrameRate = FpsCap > 0 ? FpsCap : -1;

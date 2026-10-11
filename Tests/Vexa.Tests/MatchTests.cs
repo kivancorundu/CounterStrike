@@ -253,6 +253,21 @@ namespace Vexa.Tests
         }
 
         [Fact]
+        public void BotGoalsAreAlwaysReachable()
+        {
+            // a failed search visits the whole map (the most expensive kind), so bot goals come from the
+            // round-trip area where every node can reach every other
+            var nav = NavGrid.Build(LoadMap("kasaba").BuildCollision());
+            Assert.True(nav.RoundTripCount > nav.Nodes.Count / 4, $"round trip area {nav.RoundTripCount} of {nav.Nodes.Count}");
+            var rng = new Random(5);
+            for (int i = 0; i < 200; i++)
+            {
+                var a = nav.RandomNode(rng); var b = nav.RandomNode(rng);
+                Assert.NotNull(nav.FindPath(a, b));
+            }
+        }
+
+        [Fact]
         public void FullBotMatchOnKasabaPlaysToTheEnd()
         {
             var cfg = MatchConfig.Competitive();

@@ -162,6 +162,12 @@ Arayüz `Client/UI` altında tamamen C# ile kurulur. UXML/USS dosyası, sahne ve
 - **Birinci şahıs** (`ViewModel`): silah ve kollar 1/4 ölçekte, kameraya 4 kat daha yakın çizilir. Görüntü aynıdır ama model oyuncunun kendi gövdesinin içinde kalır, duvara girmez.
 - **Ses** (`Audio/SoundSynth`, `GameAudio`): şimdilik tüm sesler kodla sentezlenir ve 3B konumsal çalınır. Ses paketi gelince aynı isimlerle değiştirilecek.
 
+## Performans (zayıf PC'ler)
+
+- **Grafik ön ayarları** (`Client/GraphicsQuality.cs`): DÜŞÜK / ORTA / YÜKSEK / ULTRA. Proje kalite seviyelerinden bağımsız olarak çözünürlük ölçeği, gölgeler, MSAA, HDR, ek ışıklar, doku çözünürlüğü ve skinning'i doğrudan ayarlar. DÜŞÜK'te telefon modelleri (~10 bin üçgen, küçük doku), gölgesiz ve ek ışıksız çizim, %70 çözünürlük ölçeği kullanılır. Ayar seçilmemişse makine algılanır: dahili GPU (Intel / AMD APU), az VRAM veya RAM → DÜŞÜK.
+- **Görünmeyen çizilmez:** harita 20 m'lik parçalara bölünür, kamera görüş alanı dışındaki parçalar çizilmez. Ekran dışındaki karakterler skinning yapmaz, animasyonları ve sallanan parçaları hesaplanmaz. Uzaktaki karakterlerin animasyonu 2-3 karede bir güncellenir.
+- **Botlar:** yol bulma sunucu tick'inin en pahalı işiydi. Tick başına tek yol araması yapılır. Hedefler yalnızca hem gidilip hem dönülebilen alandan seçilir; böylece haritanın tamamını tarayan başarısız aramalar olmaz. A* düz dizilerle çalışır. 10 botlu rekabetçi maçta sunucu tick'i ~2 ms'den ~0,15 ms'ye indi. Gezinme ağı maç başında takılma yaratmasın diye yükleme ekranında kurulur.
+
 ## Harita hattı
 
 1. Haritalar Unity'de normal objelerle tasarlanır. Çarpışma için BoxCollider kullanılır; malzeme seçimi `VexaSurface` ile, doğuş noktaları `VexaSpawn` ile, bomba bölgeleri ve satın alma alanları `VexaZone` ile işaretlenir.

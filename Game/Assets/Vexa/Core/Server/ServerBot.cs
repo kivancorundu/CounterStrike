@@ -314,7 +314,11 @@ namespace Vexa.Core.Server
             if (!rounds)
             {
                 if (_heard.HasValue && Now - _heardTime < 3f) { goal = _heard.Value; key = "heard" + (int)_heardTime; }
-                else { if (_goalKey.StartsWith("wander") && _path != null && _pathIdx < _path.Count) { goal = _goal; key = _goalKey; } else { goal = Nav.RandomNode(_rng); key = "wander" + _rng.Next(); } }
+                else
+                {
+                    bool keep = _goalKey.StartsWith("wander") && (_path != null ? _pathIdx < _path.Count : _g.Tick < _repathTick);
+                    if (keep) { goal = _goal; key = _goalKey; } else { goal = Nav.RandomNode(_rng); key = "wander" + _rng.Next(); }
+                }
             }
             else if (s.Team == Team.T)
             {
@@ -324,7 +328,7 @@ namespace Vexa.Core.Server
                 {
                     var site = _g.Map.Sites.FirstOrDefault(z => z.Name == Site);
                     goal = site.Name != null ? new Vector3((site.MinX + site.MaxX) / 2, 0, (site.MinZ + site.MaxZ) / 2) : HoldSpot;
-                    goal = Nav.Nearest(goal) >= 0 ? Nav.Nodes[Nav.Nearest(goal)] : goal;
+                    { int gn = Nav.Nearest(goal, true); if (gn >= 0) goal = Nav.Nodes[gn]; }
                     key = "plant";
                     if (_g.Map.SiteAt(s.Position) != null && _target == null)
                     {
@@ -353,12 +357,14 @@ namespace Vexa.Core.Server
             ThrowUtility(ref cmd, ref yaw, ref pitch);
             if (_throwStage > 0) return;
 
-            if (key != _goalKey || _path == null || _g.Tick >= _repathTick)
+            // Path searches are the most expensive thing a bot does: the server hands out a few per tick, and a goal
+            // that can't be reached is retried a little later instead of on every tick.
+            if ((key != _goalKey || _g.Tick >= _repathTick) && _g.TakePathSearch())
             {
                 _goalKey = key; _goal = goal;
                 _path = Nav.FindPath(s.Position, goal);
                 _pathIdx = 0;
-                _repathTick = _g.Tick + _g.TickRate * 3;
+                _repathTick = _g.Tick + (_path != null ? _g.TickRate * 3 : _g.TickRate / 2) + _rng.Next(_g.TickRate / 4 + 1);
             }
             bool moving = Follow(ref cmd, ref yaw, ref pitch);
             if (!moving)
@@ -413,7 +419,7 @@ namespace Vexa.Core.Server
         {
             if (_goalKey == "post") return _goal;
             var off = new Vector3(((float)_rng.NextDouble() - 0.5f) * r, 0, ((float)_rng.NextDouble() - 0.5f) * r);
-            int n = Nav.Nearest(p + off);
+            int n = Nav.Nearest(p + off, true);
             return n >= 0 ? Nav.Nodes[n] : p;
         }
 

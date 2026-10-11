@@ -25,7 +25,9 @@ namespace Vexa.Client
 
         public static Material MakeMaterial(Color c)
         {
-            var sh = Shader.Find("Universal Render Pipeline/Lit");
+            // DÜŞÜK: the cheaper Blinn-Phong shader (no PBR) for flat-colored surfaces
+            var sh = GraphicsQuality.Current == GraphicsQuality.Level.Low ? Shader.Find("Universal Render Pipeline/Simple Lit") : null;
+            if (sh == null) sh = Shader.Find("Universal Render Pipeline/Lit");
             if (sh == null) sh = Shader.Find("Standard");
             if (sh == null) sh = Shader.Find("Sprites/Default"); // always included in builds
             var m = new Material(sh);
@@ -34,23 +36,38 @@ namespace Vexa.Client
             return m;
         }
 
+        /// <summary>Chunk edge in meters. The map is cut into chunks so the camera only draws the ones in view
+        /// (frustum culling works per renderer; one mesh for the whole map would always be drawn).</summary>
+        public const float ChunkSize = 20f;
+
         public static GameObject Build(MapData map)
         {
             var root = new GameObject("Map_" + map.Name);
-            var groups = new Dictionary<SurfaceMaterial, List<StaticBox>>();
+            var groups = new Dictionary<(SurfaceMaterial, int, int), List<StaticBox>>();
             foreach (var b in map.Boxes)
             {
-                if (!groups.TryGetValue(b.Material, out var list)) groups[b.Material] = list = new List<StaticBox>();
+                var c = (b.Min + b.Max) * 0.5f;
+                var key = (b.Material, Mathf.FloorToInt(c.X / ChunkSize), Mathf.FloorToInt(c.Z / ChunkSize));
+                if (!groups.TryGetValue(key, out var list)) groups[key] = list = new List<StaticBox>();
                 list.Add(b);
             }
+            var mats = new Dictionary<SurfaceMaterial, Material>();
+            var shadows = GraphicsQuality.Current == GraphicsQuality.Level.Low ? UnityEngine.Rendering.ShadowCastingMode.Off : UnityEngine.Rendering.ShadowCastingMode.On;
             foreach (var kv in groups)
             {
-                var go = new GameObject(kv.Key.ToString());
+                var (surface, cx, cz) = kv.Key;
+                if (!mats.TryGetValue(surface, out var mat))
+                    mats[surface] = mat = MakeMaterial(Colors.TryGetValue(surface, out var c) ? c : Color.gray);
+                var go = new GameObject($"{surface}_{cx}_{cz}");
                 go.transform.SetParent(root.transform, false);
+                go.isStatic = true;
                 var mf = go.AddComponent<MeshFilter>();
                 var mr = go.AddComponent<MeshRenderer>();
                 mf.sharedMesh = BuildMesh(kv.Value);
-                mr.sharedMaterial = MakeMaterial(Colors.TryGetValue(kv.Key, out var c) ? c : Color.gray);
+                mr.sharedMaterial = mat;
+                mr.shadowCastingMode = shadows;
+                mr.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
+                mr.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
             }
             return root;
         }
@@ -68,9 +85,10 @@ namespace Vexa.Client
                 AddFace(v, n, uv, tri, new Vector3(mn.x, mn.y, mx.z), new Vector3(mn.x, mx.y, mx.z), new Vector3(mn.x, mx.y, mn.z), new Vector3(mn.x, mn.y, mn.z), Vector3.left);
                 AddFace(v, n, uv, tri, new Vector3(mx.x, mn.y, mn.z), new Vector3(mx.x, mx.y, mn.z), new Vector3(mx.x, mx.y, mx.z), new Vector3(mx.x, mn.y, mx.z), Vector3.right);
             }
-            var mesh = new Mesh { indexFormat = UnityEngine.Rendering.IndexFormat.UInt32 };
+            var mesh = new Mesh { indexFormat = v.Count > 65000 ? UnityEngine.Rendering.IndexFormat.UInt32 : UnityEngine.Rendering.IndexFormat.UInt16 };
             mesh.SetVertices(v); mesh.SetNormals(n); mesh.SetUVs(0, uv); mesh.SetTriangles(tri, 0);
             mesh.RecalculateBounds();
+            mesh.UploadMeshData(true); // GPU copy only, no CPU memory kept
             return mesh;
         }
 

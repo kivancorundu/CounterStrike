@@ -20,11 +20,14 @@ namespace Vexa.Client.Art
         /// </summary>
         public static Material MaterialFor(string texturePath)
         {
-            if (_materials.TryGetValue(texturePath, out var m)) return m;
+            // normal maps are skipped on the low-detail set (phones, DÜŞÜK)
+            bool useNormal = !GraphicsQuality.LowDetail;
+            string key = useNormal ? texturePath : texturePath + "|flat";
+            if (_materials.TryGetValue(key, out var m)) return m;
             var albedo = Resources.Load<Texture2D>(texturePath + "_albedo");
-            if (albedo == null) { _materials[texturePath] = null; return null; }
+            if (albedo == null) { _materials[key] = null; return null; }
             var mask = Resources.Load<Texture2D>(texturePath + "_mask");
-            var normal = PlatformProfile.IsMobile ? null : Resources.Load<Texture2D>(texturePath + "_normal");
+            var normal = useNormal ? Resources.Load<Texture2D>(texturePath + "_normal") : null;
             var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
             m = new Material(shader) { name = texturePath };
             m.SetTexture("_BaseMap", albedo);
@@ -46,7 +49,7 @@ namespace Vexa.Client.Art
                 m.SetFloat("_BumpScale", 1f);
                 m.EnableKeyword("_NORMALMAP");
             }
-            _materials[texturePath] = m;
+            _materials[key] = m;
             return m;
         }
 
@@ -62,7 +65,8 @@ namespace Vexa.Client.Art
             }
         }
 
-        static string Folder(string kind, bool lod) => lod && PlatformProfile.IsMobile ? $"Models/{kind}/Mobile/" : $"Models/{kind}/";
+        /// <summary>The low-poly set with small textures on phones and on the DÜŞÜK preset.</summary>
+        static string Folder(string kind, bool lod) => lod && GraphicsQuality.LowDetail ? $"Models/{kind}/Mobile/" : $"Models/{kind}/";
 
         static GameObject Prefab(string path)
         {
@@ -79,7 +83,8 @@ namespace Vexa.Client.Art
             if (p == null) return null;
             var go = Object.Instantiate(p);
             foreach (var c in go.GetComponentsInChildren<Collider>()) Object.Destroy(c);
-            foreach (var r in go.GetComponentsInChildren<Renderer>()) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+            var shadows = GraphicsQuality.Current == GraphicsQuality.Level.Low ? UnityEngine.Rendering.ShadowCastingMode.Off : UnityEngine.Rendering.ShadowCastingMode.On;
+            foreach (var r in go.GetComponentsInChildren<Renderer>()) r.shadowCastingMode = shadows;
             return go;
         }
 

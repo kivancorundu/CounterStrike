@@ -38,6 +38,7 @@ namespace Vexa.Client
                 l.transform.rotation = Quaternion.Euler(50, -30, 0);
                 DontDestroyOnLoad(l.gameObject);
             }
+            GraphicsQuality.ApplySun(GraphicsQuality.Current);
             gameObject.AddComponent<UiRoot>();
         }
 
@@ -60,13 +61,9 @@ namespace Vexa.Client
             {
                 Application.targetFrameRate = 60;
                 Screen.sleepTimeout = SleepTimeout.NeverSleep;
-                QualitySettings.shadowDistance = 25f;
             }
-            else
-            {
-                Application.targetFrameRate = -1; // uncapped for competitive play
-                QualitySettings.shadowDistance = 80f;
-            }
+            else Application.targetFrameRate = -1; // uncapped for competitive play
+            // shadows, render scale, textures etc.: GraphicsQuality (applied by VexaSettings)
         }
     }
 }

@@ -130,11 +130,51 @@ namespace Vexa.Core.AI
                 comp++;
             }
             _gScore = new float[n]; _came = new int[n]; _stamp = new int[n]; _closed = new int[n];
+            ComputeRoundTrip();
+        }
+
+        // ---- round trip: nodes of the main area you can walk to AND walk back from (drops are one-way) ----
+        private bool[] _roundTrip;
+        public int RoundTripCount { get; private set; }
+
+        /// <summary>Picking goals only from here means a path search between two of them never fails (a failed
+        /// search is the most expensive kind: it visits the whole map).</summary>
+        public bool IsRoundTrip(int n) => _roundTrip != null && _roundTrip[n];
+
+        private void ComputeRoundTrip()
+        {
+            int n = Nodes.Count;
+            _roundTrip = new bool[n];
+            // seed: the playable node with the most neighbours (open floor in the middle of the map)
+            int seed = -1;
+            for (int i = 0; i < n; i++) if (IsPlayable(i) && (seed < 0 || Edges[i].Length > Edges[seed].Length)) seed = i;
+            if (seed < 0) return;
+            var reverse = new List<int>[n];
+            for (int i = 0; i < n; i++) reverse[i] = new List<int>();
+            for (int i = 0; i < n; i++) foreach (int j in Edges[i]) reverse[j].Add(i);
+            var fwd = Flood(seed, i => Edges[i]);
+            var back = Flood(seed, i => reverse[i]);
+            for (int i = 0; i < n; i++) if (fwd[i] && back[i]) { _roundTrip[i] = true; RoundTripCount++; }
+        }
+
+        private bool[] Flood(int seed, Func<int, IEnumerable<int>> next)
+        {
+            var seen = new bool[Nodes.Count];
+            var stack = new Stack<int>();
+            seen[seed] = true; stack.Push(seed);
+            while (stack.Count > 0)
+            {
+                int c = stack.Pop();
+                foreach (int nb in next(c)) if (!seen[nb]) { seen[nb] = true; stack.Push(nb); }
+            }
+            return seen;
         }
 
         private float[] _gScore; private int[] _came, _stamp, _closed; private int _search;
 
-        public int Nearest(Vector3 p)
+        /// <summary>Closest playable node; <paramref name="roundTrip"/> limits it to nodes you can also walk back from
+        /// (use it for goals).</summary>
+        public int Nearest(Vector3 p, bool roundTrip = false)
         {
             int cx = CellX(p.X), cz = CellZ(p.Z);
             int best = -1; float bestD = float.MaxValue;
@@ -146,7 +186,7 @@ namespace Vexa.Core.AI
                         if (!_cells.TryGetValue(Key(cx + dx, cz + dz), out var lv)) continue;
                         foreach (int n in lv)
                         {
-                            if (!IsPlayable(n)) continue;
+                            if (!IsPlayable(n) || roundTrip && !IsRoundTrip(n)) continue;
                             var q = Nodes[n];
                             float dy = q.Y - p.Y;
                             float d = (q.X - p.X) * (q.X - p.X) + (q.Z - p.Z) * (q.Z - p.Z) + (dy > 0.6f ? 100f : dy * dy * 4f);
@@ -156,56 +196,78 @@ namespace Vexa.Core.AI
             return best;
         }
 
-        public List<Vector3> FindPath(Vector3 from, Vector3 to, int maxIter = 30000)
+        // A* open set: binary heap in flat arrays, reused between searches (no allocations per node)
+        private float[] _heapF = new float[1024];
+        private int[] _heapN = new int[1024];
+        private int _heapCount;
+
+        void HeapPush(float f, int n)
         {
-            int s = Nearest(from), goal = Nearest(to);
+            if (_heapCount == _heapF.Length) { Array.Resize(ref _heapF, _heapCount * 2); Array.Resize(ref _heapN, _heapCount * 2); }
+            int k = _heapCount++;
+            while (k > 0)
+            {
+                int p = (k - 1) >> 1;
+                if (_heapF[p] <= f) break;
+                _heapF[k] = _heapF[p]; _heapN[k] = _heapN[p]; k = p;
+            }
+            _heapF[k] = f; _heapN[k] = n;
+        }
+
+        int HeapPop()
+        {
+            int top = _heapN[0];
+            int count = --_heapCount;
+            if (count > 0)
+            {
+                float f = _heapF[count]; int n = _heapN[count];
+                int k = 0;
+                for (;;)
+                {
+                    int l = 2 * k + 1;
+                    if (l >= count) break;
+                    int m = l + 1 < count && _heapF[l + 1] < _heapF[l] ? l + 1 : l;
+                    if (_heapF[m] >= f) break;
+                    _heapF[k] = _heapF[m]; _heapN[k] = _heapN[m]; k = m;
+                }
+                _heapF[k] = f; _heapN[k] = n;
+            }
+            return top;
+        }
+
+        /// <summary>Heuristic weight above 1: slightly less than shortest paths, far fewer nodes searched.</summary>
+        const float Greed = 1.25f;
+
+        public List<Vector3> FindPath(Vector3 from, Vector3 to, int maxIter = 12000)
+        {
+            int s = Nearest(from), goal = Nearest(to, true);
+            if (goal < 0) goal = Nearest(to);
             if (s < 0 || goal < 0) return null;
             var result = new List<Vector3>();
             if (s == goal) { result.Add(to); return result; }
             _search++;
             var gp = Nodes[goal];
-            var heap = new List<(float f, int n)>(256);
-            void Push(float f, int n)
-            {
-                heap.Add((f, n)); int k = heap.Count - 1;
-                while (k > 0) { int p = (k - 1) >> 1; if (heap[p].f <= heap[k].f) break; var t = heap[p]; heap[p] = heap[k]; heap[k] = t; k = p; }
-            }
-            int Pop()
-            {
-                var top = heap[0]; var last = heap[heap.Count - 1]; heap.RemoveAt(heap.Count - 1);
-                if (heap.Count > 0)
-                {
-                    heap[0] = last; int k = 0;
-                    for (;;)
-                    {
-                        int l = 2 * k + 1, r = l + 1, m = k;
-                        if (l < heap.Count && heap[l].f < heap[m].f) m = l;
-                        if (r < heap.Count && heap[r].f < heap[m].f) m = r;
-                        if (m == k) break;
-                        var t = heap[m]; heap[m] = heap[k]; heap[k] = t; k = m;
-                    }
-                }
-                return top.n;
-            }
-            float G(int n) => _stamp[n] == _search ? _gScore[n] : float.MaxValue;
+            _heapCount = 0;
             _stamp[s] = _search; _gScore[s] = 0; _came[s] = -1;
-            Push(Vector3.Distance(Nodes[s], gp), s);
+            HeapPush(Vector3.Distance(Nodes[s], gp) * Greed, s);
             int iter = 0;
             bool found = false;
-            while (heap.Count > 0 && iter++ < maxIter)
+            while (_heapCount > 0 && iter++ < maxIter)
             {
-                int c = Pop();
+                int c = HeapPop();
                 if (c == goal) { found = true; break; }
                 if (_closed[c] == _search) continue;
                 _closed[c] = _search;
                 float gc = _gScore[c];
+                var pc = Nodes[c];
                 foreach (int nb in Edges[c])
                 {
                     if (_closed[nb] == _search) continue;
-                    float ng = gc + Vector3.Distance(Nodes[c], Nodes[nb]) + (Edges[nb].Length < 8 ? 0.4f : 0f); // keep away from walls
-                    if (ng >= G(nb)) continue;
+                    var pn = Nodes[nb];
+                    float ng = gc + Vector3.Distance(pc, pn) + (Edges[nb].Length < 8 ? 0.4f : 0f); // keep away from walls
+                    if (_stamp[nb] == _search && ng >= _gScore[nb]) continue;
                     _stamp[nb] = _search; _gScore[nb] = ng; _came[nb] = c;
-                    Push(ng + Vector3.Distance(Nodes[nb], gp), nb);
+                    HeapPush(ng + Vector3.Distance(pn, gp) * Greed, nb);
                 }
             }
             if (!found) return null;
@@ -229,14 +291,14 @@ namespace Vexa.Core.AI
         public Vector3 RandomNodeIn(ZoneRect zone, Random rng)
         {
             var candidates = new List<int>();
-            for (int i = 0; i < Nodes.Count; i++) if (IsPlayable(i) && zone.Contains(Nodes[i]) && Edges[i].Length >= 3) candidates.Add(i);
+            for (int i = 0; i < Nodes.Count; i++) if (IsRoundTrip(i) && zone.Contains(Nodes[i]) && Edges[i].Length >= 3) candidates.Add(i);
             if (candidates.Count == 0) return new Vector3((zone.MinX + zone.MaxX) / 2, 0, (zone.MinZ + zone.MaxZ) / 2);
             return Nodes[candidates[rng.Next(candidates.Count)]];
         }
 
         public Vector3 RandomNode(Random rng)
         {
-            for (int k = 0; k < 64 && Nodes.Count > 0; k++) { int i = rng.Next(Nodes.Count); if (IsPlayable(i)) return Nodes[i]; }
+            for (int k = 0; k < 64 && Nodes.Count > 0; k++) { int i = rng.Next(Nodes.Count); if (IsRoundTrip(i)) return Nodes[i]; }
             return Nodes.Count == 0 ? Vector3.Zero : Nodes[0];
         }
     }

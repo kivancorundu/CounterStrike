@@ -28,6 +28,11 @@ namespace Vexa.Client
         private readonly float[] _weights = new float[ClipNames.Length];
         private readonly float[] _target = new float[ClipNames.Length];
         private bool _hasGraph;
+        private SkinnedMeshRenderer[] _skins;
+        private float _pendingDt;      // animation time not evaluated yet (off camera / far away)
+        private int _frameSkip;
+        private bool _posed;           // the pose was evaluated this frame (LateUpdate may pitch it)
+        private bool _everPosed;       // renderers only report visibility after their first frame
         private GameObject _weapon;
         private string _weaponKey;
         private float _pitch, _yaw;
@@ -62,10 +67,13 @@ namespace Vexa.Client
             _head = ModelLibrary.FindDeep(_model.transform, "Head");
             // weapons hang on the grip point of the right hand (older models only have the hand bone)
             _hand = ModelLibrary.FindDeep(_model.transform, "RightGrip") ?? ModelLibrary.FindDeep(_model.transform, "RightHand");
-            foreach (var smr in _model.GetComponentsInChildren<SkinnedMeshRenderer>())
+            _skins = _model.GetComponentsInChildren<SkinnedMeshRenderer>();
+            foreach (var smr in _skins)
             {
-                smr.updateWhenOffscreen = true;
-                smr.quality = SkinQuality.Bone4;
+                // off camera: no skinning (the bind-pose bounds, padded for crouching / lying dead, decide when)
+                smr.updateWhenOffscreen = false;
+                var b = smr.localBounds; b.Expand(1.2f); smr.localBounds = b;
+                smr.quality = GraphicsQuality.Current == GraphicsQuality.Level.Low ? SkinQuality.Bone2 : SkinQuality.Bone4;
             }
             SpringBones.Attach(_model);
 
@@ -85,6 +93,7 @@ namespace Vexa.Client
                 _graph.Connect(_playables[i], 0, _mixer, i);
             }
             _weights[Idle] = 1;
+            _everPosed = false;
             _hasGraph = true;
         }
 
@@ -150,9 +159,33 @@ namespace Vexa.Client
                 }
             }
 
-            if (_hasGraph) Animate(s, dt);
+            if (_hasGraph) AnimateCulled(s, dt);
             else if (_fallbackPivot != null) AnimateFallback(s, dt);
             UpdateWeapon(s);
+        }
+
+        bool Visible()
+        {
+            if (_skins == null) return true;
+            foreach (var r in _skins) if (r != null && r.isVisible) return true;
+            return false;
+        }
+
+        /// <summary>Animates only bodies the camera can see, and far ones at a lower rate (every 2nd / 3rd frame).</summary>
+        void AnimateCulled(in RemoteState s, float dt)
+        {
+            _pendingDt += dt;
+            _posed = false;
+            if (_everPosed && !Visible()) return;
+            _everPosed = true;
+            var cam = Camera.main;
+            float dist = cam != null ? Vector3.Distance(cam.transform.position, transform.position) : 0f;
+            int every = dist > 45f ? 3 : dist > 20f ? 2 : 1;
+            if (GraphicsQuality.Current == GraphicsQuality.Level.Low) every++;
+            if (every > 1 && s.Alive && ++_frameSkip % every != 0) return;
+            Animate(s, Mathf.Min(_pendingDt, 0.25f));
+            _pendingDt = 0;
+            _posed = true;
         }
 
         void Animate(in RemoteState s, float dt)
@@ -220,7 +253,8 @@ namespace Vexa.Client
 
         void LateUpdate()
         {
-            if (!_alive || _chest == null) { PlaceWeapon(); return; }
+            // the aim pitch is added on top of the animated pose, so only on frames the pose was evaluated
+            if (!_alive || _chest == null || !_posed) { PlaceWeapon(); return; }
             // aim: pitch the chest (arms and weapon follow) and the head a little more
             var right = transform.right;
             _chest.rotation = Quaternion.AngleAxis(-_pitch * 0.75f, right) * _chest.rotation;

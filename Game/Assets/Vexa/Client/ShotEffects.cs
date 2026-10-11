@@ -78,9 +78,13 @@ namespace Vexa.Client
             q.transform.position = p + n * 0.003f;
             q.transform.rotation = Quaternion.LookRotation(-n);
             q.transform.localScale = Vector3.one * 0.05f;
-            q.GetComponent<Renderer>().sharedMaterial = _decalMat;
+            var r = q.GetComponent<Renderer>();
+            r.sharedMaterial = _decalMat;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.receiveShadows = false;
             _decals.Enqueue(q);
-            while (_decals.Count > 200) Object.Destroy(_decals.Dequeue());
+            int max = GraphicsQuality.Current == GraphicsQuality.Level.Low ? 48 : 200;
+            while (_decals.Count > max) Object.Destroy(_decals.Dequeue());
         }
 
         public void Blood(Vector3 p, bool head)
@@ -94,7 +98,9 @@ namespace Vexa.Client
             var g = GameObject.CreatePrimitive(t);
             Object.Destroy(g.GetComponent<Collider>());
             g.transform.position = p; g.transform.localScale = Vector3.one * size;
-            g.GetComponent<Renderer>().sharedMaterial = m;
+            var r = g.GetComponent<Renderer>();
+            r.sharedMaterial = m;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             _temp.Add((g, life));
         }
 

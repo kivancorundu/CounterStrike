@@ -77,6 +77,18 @@ namespace Vexa.Core.Server
         public IReadOnlyList<Player> Players => _players;
         private AI.NavGrid _nav;
         public AI.NavGrid Nav => _nav ?? (_nav = AI.NavGrid.Build(World));
+
+        /// <summary>Bot path searches allowed per tick (the rest wait a tick and keep following their old path).</summary>
+        public const int PathSearchesPerTick = 1;
+        private int _pathTick = -1, _pathSearches;
+
+        internal bool TakePathSearch()
+        {
+            if (_pathTick != Tick) { _pathTick = Tick; _pathSearches = 0; }
+            if (_pathSearches >= PathSearchesPerTick) return false;
+            _pathSearches++;
+            return true;
+        }
         public event Action<string> Log;
         public event Action<KillEvent> OnKill;
         public event Action<HitEvent> OnHit;
