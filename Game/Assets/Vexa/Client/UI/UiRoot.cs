@@ -48,6 +48,10 @@ namespace Vexa.Client.UI
             _doc = gameObject.AddComponent<UIDocument>();
             _doc.panelSettings = ps;
             _root = _doc.rootVisualElement;
+            // the document root must cover the screen even without a theme (otherwise every full-screen panel
+            // gets zero height and the whole UI piles up in a strip at the top)
+            _root.style.position = Position.Absolute;
+            _root.style.left = 0; _root.style.top = 0; _root.style.right = 0; _root.style.bottom = 0;
             _root.style.unityFontDefinition = FontDefinition.FromFont(Fonts.Body);
             _root.style.color = Theme.Text;
             _root.style.fontSize = 16;

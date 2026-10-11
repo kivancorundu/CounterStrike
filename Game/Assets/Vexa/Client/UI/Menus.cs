@@ -63,7 +63,7 @@ namespace Vexa.Client.UI
             this.Fill();
             pickingMode = PickingMode.Position;
             // opaque ground: the empty 3D scene behind the menu (a bright sky) must never show through the text
-            this.Bg(Theme.Ink);
+            this.Bg(Theme.WithAlpha(Theme.Ink, 0.9f));
             hierarchy.Add(Backdrop());
             _leftShade = U.Box().Abs(0, 0, null, 0).W(640).Bg(new Color(0.03f, 0.04f, 0.055f, 0.96f)).BorderRight(1, Theme.Line);
             hierarchy.Add(_leftShade);

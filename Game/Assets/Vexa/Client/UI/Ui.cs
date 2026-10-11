@@ -85,6 +85,7 @@ namespace Vexa.Client.UI
         {
             var l = new Label(s) { pickingMode = PickingMode.Ignore };
             l.style.flexShrink = 0;
+            l.style.whiteSpace = WhiteSpace.NoWrap;   // multi-line texts opt in (Wrap2 / WhiteSpace.Normal)
             l.style.fontSize = size;
             l.style.color = color ?? Theme.Text;
             l.style.unityFontDefinition = FontDefinition.FromFont(font ?? Fonts.Body);
