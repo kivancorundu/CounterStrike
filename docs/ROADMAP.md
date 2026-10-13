@@ -70,7 +70,7 @@ Durum: ✅ bitti · 🔄 sürüyor · ⏳ sırada
   - **Muhafız** (savunma): başlık ve tam yüz gaz maskesi (çift cam, yan filtre, kafa kayışları), lacivert üniforma.
     - Cepli plaka yeleği, telsiz ve anten, dizlik, bacak kılıfı, boşaltma çantası.
   - Eller silahı gerçekten kavrar (IK + parmak pozları). Kıyafetler katmanlı, kırışık ve dikişli.
-  - Rig'li; 7 animasyonu var: bekleme, yürüme, koşma, eğilme, eğilerek yürüme, zıplama, ölüm. Ölçüler sunucu hitbox'larıyla uyumlu.
+  - Rig'li; 16 prosedürel animasyon (`vexa_anim.py`): bekleme, çömelme, 4 yönlü yürüme / koşma / çömelerek yürüme, zıplama, ölüm. Ayaklar yere basar, kollar silahla birlikte hareket eder. Ölçüler sunucu hitbox'larıyla uyumlu.
   - **Kıyafet fiziği:** anten, çanta, kılıf, kayış uçları ve bez yay benzetimiyle sallanır (mobilde de ucuz).
 - ✅ **Birinci şahıs:** silah ve eller.
   - Kollar ayrı üretilir (`Tools/Blender/vexa_fparms.py`): temiz MakeHuman kolu, eldiven ve kol (akıncıda sıvanmış ekose, muhafızda üniforma), 2K doku.

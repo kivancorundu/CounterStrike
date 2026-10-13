@@ -15,12 +15,24 @@ namespace Vexa.Client
     /// </summary>
     public sealed class PlayerAvatar : MonoBehaviour
     {
-        static readonly string[] ClipNames = { "idle", "walk", "run", "crouch", "crouch_walk", "jump", "death" };
-        const int Idle = 0, Walk = 1, Run = 2, Crouch = 3, CrouchWalk = 4, Jump = 5, Death = 6;
+        // Tools/Blender/vexa_anim.py: locomotion comes in four directions (f, b, l, r) per gait, all clips of a gait
+        // share one length and phase (right foot strikes at 0), so they blend without the feet fighting
+        static readonly string[] ClipNames =
+        {
+            "idle", "crouch", "jump", "death",
+            "walk_f", "walk_b", "walk_l", "walk_r",
+            "run_f", "run_b", "run_l", "run_r",
+            "crouch_walk_f", "crouch_walk_b", "crouch_walk_l", "crouch_walk_r",
+        };
+        const int Idle = 0, Crouch = 1, Jump = 2, Death = 3, Walk = 4, Run = 8, CrouchWalk = 12;
+        // speeds the clips were made at (m/s): played at speed / reference so the planted feet don't slide
+        const float WalkSpeed = 2.8f, RunSpeed = 5.5f, CrouchWalkSpeed = 1.9f;
+        private readonly float[] _gaitPhase = new float[3];
 
         private Team _team = (Team)255;
         private GameObject _model;
         private Transform _chest, _head, _hand;
+        private Quaternion _gripToWeapon = Quaternion.identity;
         private PlayableGraph _graph;
         private AnimationMixerPlayable _mixer;
         private readonly AnimationClipPlayable[] _playables = new AnimationClipPlayable[ClipNames.Length];
@@ -67,6 +79,9 @@ namespace Vexa.Client
             _head = ModelLibrary.FindDeep(_model.transform, "Head");
             // weapons hang on the grip point of the right hand (older models only have the hand bone)
             _hand = ModelLibrary.FindDeep(_model.transform, "RightGrip") ?? ModelLibrary.FindDeep(_model.transform, "RightHand");
+            // the model is still in its rest (aiming) pose here: remember how the weapon sits relative to the grip, so
+            // it follows the animated hands (the clips sway and bob the rifle with both hands on it)
+            if (_hand != null) _gripToWeapon = Quaternion.Inverse(_hand.rotation) * transform.rotation;
             _skins = _model.GetComponentsInChildren<SkinnedMeshRenderer>();
             foreach (var smr in _skins)
             {
@@ -190,46 +205,76 @@ namespace Vexa.Client
 
         void Animate(in RemoteState s, float dt)
         {
-            float speed = new Vector2(s.Velocity.X, s.Velocity.Z).magnitude;
+            var vel = s.Velocity.ToU();
+            vel.y = 0;
+            float speed = vel.magnitude;
+            // direction of travel relative to where the body faces: x right, z forward
+            var local = Quaternion.Inverse(Quaternion.Euler(0, s.Yaw, 0)) * vel;
+            float fx = speed > 0.05f ? local.x / speed : 0f, fz = speed > 0.05f ? local.z / speed : 1f;
+            float sum = Mathf.Abs(fx) + Mathf.Abs(fz);
+            if (sum < 1e-4f) { fz = 1; sum = 1; }
+            float dF = Mathf.Max(0, fz) / sum, dB = Mathf.Max(0, -fz) / sum, dR = Mathf.Max(0, fx) / sum, dL = Mathf.Max(0, -fx) / sum;
+
             float duck = Mathf.Clamp01(s.DuckAmount);
             var target = _target;
             System.Array.Clear(target, 0, target.Length);
+            float walk = 0, run = 0, crouchWalk = 0;
             if (!s.Alive) target[Death] = 1;
             else if (!s.OnGround) target[Jump] = 1;
             else
             {
-                float walk = Mathf.Clamp01((speed - 0.2f) / 1.3f) * (1f - Mathf.Clamp01((speed - 3f) / 2f));
-                float run = Mathf.Clamp01((speed - 3f) / 2f);
-                float idle = Mathf.Max(0, 1f - walk - run);
-                target[Idle] = idle * (1 - duck);
-                target[Walk] = walk * (1 - duck);
-                target[Run] = run * (1 - duck);
-                target[Crouch] = idle * duck;
-                target[CrouchWalk] = (walk + run) * duck;
+                float moving = Mathf.Clamp01((speed - 0.15f) / 0.6f);
+                run = Mathf.Clamp01((speed - 3.2f) / 1.6f) * moving;
+                walk = moving - run;
+                target[Idle] = (1 - moving) * (1 - duck);
+                target[Crouch] = (1 - moving) * duck;
+                crouchWalk = moving * duck;
+                walk *= 1 - duck;
+                run *= 1 - duck;
+                Directional(target, Walk, walk, dF, dB, dL, dR);
+                Directional(target, Run, run, dF, dB, dL, dR);
+                Directional(target, CrouchWalk, crouchWalk, dF, dB, dL, dR);
             }
             // death and landing should read immediately; the rest blends
-            float k = 1f - Mathf.Exp(-dt * (s.Alive ? 12f : 30f));
-            float sum = 0;
-            for (int i = 0; i < _weights.Length; i++) { _weights[i] = Mathf.Lerp(_weights[i], target[i], k); sum += _weights[i]; }
+            float k = 1f - Mathf.Exp(-dt * (s.Alive ? 10f : 30f));
+            float total = 0;
+            for (int i = 0; i < _weights.Length; i++) { _weights[i] = Mathf.Lerp(_weights[i], target[i], k); total += _weights[i]; }
+
+            // one phase per gait, advanced at the rate that matches the ground speed
+            AdvancePhase(0, Walk, speed / WalkSpeed, dt);
+            AdvancePhase(1, Run, speed / RunSpeed, dt);
+            AdvancePhase(2, CrouchWalk, speed / CrouchWalkSpeed, dt);
             for (int i = 0; i < _weights.Length; i++)
             {
                 if (!_playables[i].IsValid()) continue;
-                _mixer.SetInputWeight(i, sum > 0 ? _weights[i] / sum : 0);
-                var clip = _playables[i].GetAnimationClip();
-                float len = Mathf.Max(0.01f, clip.length);
-                float rate = 1f;
-                if (i == Walk) rate = Mathf.Clamp(speed / 1.8f, 0.6f, 1.6f);
-                else if (i == Run) rate = Mathf.Clamp(speed / 5.5f, 0.7f, 1.3f);
-                else if (i == CrouchWalk) rate = Mathf.Clamp(speed / 1.4f, 0.5f, 1.5f);
-                if (i == Death)
+                _mixer.SetInputWeight(i, total > 0 ? _weights[i] / total : 0);
+                float len = Mathf.Max(0.01f, _playables[i].GetAnimationClip().length);
+                if (i >= Walk)
                 {
-                    _times[i] = s.Alive ? 0 : Mathf.Min(len, _times[i] + dt);
+                    int g = (i - Walk) / 4;
+                    _times[i] = _gaitPhase[g] * len;
                 }
+                else if (i == Death) _times[i] = s.Alive ? 0 : Mathf.Min(len, _times[i] + dt);
                 else if (i == Jump) _times[i] = s.OnGround ? 0 : Mathf.Min(len, _times[i] + dt);
-                else _times[i] = Mathf.Repeat(_times[i] + dt * rate, len);
+                else _times[i] = Mathf.Repeat(_times[i] + dt, len);
                 _playables[i].SetTime(_times[i]);
             }
             _graph.Evaluate(0);
+        }
+
+        static void Directional(float[] target, int first, float w, float f, float b, float l, float r)
+        {
+            target[first] = w * f;
+            target[first + 1] = w * b;
+            target[first + 2] = w * l;
+            target[first + 3] = w * r;
+        }
+
+        void AdvancePhase(int gait, int firstClip, float rate, float dt)
+        {
+            if (!_playables[firstClip].IsValid()) return;
+            float len = Mathf.Max(0.01f, _playables[firstClip].GetAnimationClip().length);
+            _gaitPhase[gait] = Mathf.Repeat(_gaitPhase[gait] + dt * Mathf.Clamp(rate, 0.5f, 1.6f) / len, 1f);
         }
 
         void AnimateFallback(in RemoteState s, float dt)
@@ -268,7 +313,7 @@ namespace Vexa.Client
             if (_hand != null)
             {
                 _weapon.transform.position = _hand.position;
-                _weapon.transform.rotation = Quaternion.Euler(-_pitch * 0.75f, _yaw, 0);
+                _weapon.transform.rotation = _hand.rotation * _gripToWeapon;
             }
             else
             {

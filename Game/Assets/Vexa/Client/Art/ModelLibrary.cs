@@ -144,10 +144,18 @@ namespace Vexa.Client.Art
             return go;
         }
 
-        /// <summary>Animation clips of a character, by short name (idle, walk, run, crouch, crouch_walk, jump, death).</summary>
+        /// <summary>
+        /// Animation clip of a character by short name. The clips live in their own file
+        /// (Characters/Anims/&lt;faction&gt;, Tools/Blender/vexa_anim.py) shared by both detail levels; older clips inside
+        /// the character model are the fallback.
+        /// </summary>
         public static AnimationClip Clip(Team t, string name)
         {
-            string path = Folder("Characters", true) + Faction(t);
+            return FindClip($"Models/Characters/Anims/{Faction(t)}", name) ?? FindClip(Folder("Characters", true) + Faction(t), name);
+        }
+
+        static AnimationClip FindClip(string path, string name)
+        {
             if (!_clips.TryGetValue(path, out var list)) _clips[path] = list = Resources.LoadAll<AnimationClip>(path);
             foreach (var c in list)
             {

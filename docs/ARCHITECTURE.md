@@ -160,7 +160,13 @@ Arayüz `Client/UI` altında tamamen C# ile kurulur. UXML/USS dosyası, sahne ve
      - Katmanlar birbirine geçmesin diye düzeltilir.
      Ağırlıklar otomatik ağırlıklandırılmış gövdeden aktarılır, tüm dokular yüksek poligondan pişirilir.
   6. UV atlası seyreltmeden önce kurulur: gövde ve kıyafetler MakeHuman'ın vücut UV'sini kullanır, yüz ve eller daha fazla piksel alır.
-- **Karakter animasyonu** `PlayableGraph` ile yapılır (Animator Controller gerektirmez): klipler ağdan gelen hız, eğilme ve zemin durumuna göre karıştırılır.
+- **Karakter animasyonu** `PlayableGraph` ile yapılır (Animator Controller gerektirmez): klipler ağdan gelen hız, yön, eğilme ve zemin durumuna göre karıştırılır.
+  - Klipler `Tools/Blender/vexa_anim.py` ile prosedürel üretilir ve ayrı dosyadadır (`Characters/Anims/<taraf>.fbx`, PC ve mobil ortak): bekleme, çömelme, yürüme / koşma / çömelerek yürüme × 4 yön (ileri, geri, sol, sağ), zıplama, ölüm.
+  - Ayaklar IK ile yere basar ve klibin hızında geriye kayar (oyunda kaymazlar); topuk → taban → parmak yuvarlanması, koşuda havada kalma, topuk kalçaya katlanır, diz öne sürülür.
+  - Kalça iner-kalkar, ağırlık basan ayağa kayar, adımla döner, salınan tarafa düşer; omurga ve göğüs ters döner, silah hedefte kalır. Baş dünyaya göre sabit, adım sonrası hafif sallanır.
+  - Silahın kendi sallanması vardır ve iki el IK ile silahta kalır, dirsekler onunla hareket eder. Oyunda silah `RightGrip` kemiğini izler.
+  - Bekleme: nefes, ağırlık aktarma, etrafa bakma. Ölüm: darbe, dizlerin çözülmesi, dönerek sırtüstü düşme, yere çarpıp oturma (hiçbir eklem yere girmez).
+  - Bir yürüyüşün dört yön klibi aynı uzunlukta ve aynı fazdadır (sağ ayak 0'da basar); oyun tek bir fazla oynatır, hıza göre hızlandırır (yürüme 2,8, koşma 5,5, çömelerek 1,9 m/sn).
   - Nişan için göğüs kemiği eğilir. Silah `RightGrip` kemiğine (sağ elin kavrama noktası) yerleşir.
   - **Kıyafet fiziği** (`Art/SpringBones`): `Jiggle_*` kemikleri (telsiz anteni, boşaltma çantası, bacak kılıfı, kayış uçları, bez) yay benzetimiyle gövdenin hareketine gecikmeyle uyar, yerçekimiyle sallanır.
 - **Birinci şahıs** (`ViewModel`): silah ve kollar 1/4 ölçekte, kameraya 4 kat daha yakın çizilir. Görüntü aynıdır ama model oyuncunun kendi gövdesinin içinde kalır, duvara girmez.
