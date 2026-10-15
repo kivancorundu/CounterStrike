@@ -732,6 +732,9 @@ def export_anims(path, arm):
     for pb in arm.pose.bones:
         pb.matrix_basis = Matrix.Identity(4)
     bpy.context.view_layer.update()
+    # key times are written with the scene frame rate (Blender's default is 24)
+    bpy.context.scene.render.fps = FPS
+    bpy.context.scene.render.fps_base = 1.0
     bpy.ops.object.select_all(action="DESELECT")
     arm.select_set(True)
     bpy.context.view_layer.objects.active = arm
